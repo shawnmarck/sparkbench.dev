@@ -13,7 +13,7 @@
     <h1>{{ model.name }}</h1>
     <div class="detail-meta">
       <span class="tag"><span class="engine-{{ model.engine }}">{{ model.engine | engine_label }}</span></span>
-      {% if model.param_b %}<span class="tag">{{ model.param_b }}B params</span>{% endif %}
+      {% if model.params_detail %}<span class="tag">{% if model.is_moe %}MoE · {% endif %}{{ model.params_detail }}</span>{% endif %}
       {% for uc in model.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
     </div>
   </div>
@@ -27,15 +27,21 @@
       <div class="lab">Engine</div>
       <div class="val" style="font-size: 18px;">{{ (model.engine | engine_label) if model.engine else "—" }}</div>
     </div>
-    {% if model.param_b %}
+    {% if model.params_detail %}
     <div class="stat-cell">
       <div class="lab">Parameters</div>
-      <div class="val">{{ model.param_b }}<span class="unit">B</span></div>
+      <div class="val params-val">{{ model.params_detail }}</div>
+    </div>
+    {% endif %}
+    {% if model.release_date %}
+    <div class="stat-cell">
+      <div class="lab">Released</div>
+      <div class="val" style="font-size: 18px;">{{ model.release_date }}</div>
     </div>
     {% endif %}
     {% if model.updated_at %}
     <div class="stat-cell">
-      <div class="lab">Verified</div>
+      <div class="lab">Benchmarked</div>
       <div class="val" style="font-size: 18px;">{{ model.updated_at[:10] }}</div>
     </div>
     {% endif %}
@@ -75,7 +81,7 @@
     <h3>Links</h3>
     <ul class="detail-links">
       {% if model.hf_ok %}
-      <li><a href="{{ model.hf_url }}" target="_blank" rel="noopener">{{ model.hf_repo }} on HuggingFace ↗</a></li>
+      <li><a href="{{ model.hf_url }}" target="_blank" rel="noopener">{{ model.hf_repo }} on HuggingFace ↗</a>{% if model.release_date %}<span class="detail-link-meta"> · released {{ model.release_date }}</span>{% endif %}</li>
       {% else %}
       <li><span class="hf-gated">{{ model.hf_repo }}</span> — gated or private repo on HuggingFace, no public link available.</li>
       {% endif %}

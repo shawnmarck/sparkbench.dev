@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build sparkbench.dev static site from tool repo data files."""
 
+import json
 import os
 import re
 import shutil
@@ -124,6 +125,138 @@ def format_throughput(tok_s, ctx: int | None) -> str:
     return base
 
 
+def _fmt_param_b(n: float | int | None) -> str | None:
+    if n is None:
+        return None
+    val = float(n)
+    if abs(val - round(val)) < 0.05:
+        return f"{int(round(val))}B"
+    return f"{val:g}B"
+
+
+def parse_param_b(name: str, slug: str) -> float | None:
+    """Infer total parameter count (billions) from catalog name/slug."""
+    text = f"{name} {slug}"
+    if re.search(r"coder-next", text, re.I):
+        return 80.0
+    if re.search(r"\bphi-4\b", text, re.I):
+        return 14.0
+    m = re.search(r"(\d+(?:\.\d+)?)\s*[- ]?[Bb](?:\b|[-/])", text)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    return None
+
+
+def parse_active_param_b(name: str, slug: str) -> float | None:
+    """Infer MoE active/forward parameter count (billions)."""
+    text = f"{name} {slug}"
+    m = re.search(
+        r"(\d+(?:\.\d+)?)\s*[- ]?[Bb]\s*[-/]\s*[Aa]?(\d+(?:\.\d+)?)\s*[Bb]",
+        text,
+        re.I,
+    )
+    if m:
+        try:
+            return float(m.group(2))
+        except ValueError:
+            pass
+    m = re.search(r"-a(\d+(?:\.\d+)?)b\b", slug, re.I)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    if re.search(r"coder-next", text, re.I):
+        return 3.0
+    if re.search(r"deepseek-v4", text, re.I):
+        return 13.0
+    return None
+
+
+def infer_architecture(
+    *,
+    capabilities: list | None,
+    param_b: float | None,
+    param_active_b: float | None,
+    name: str = "",
+    slug: str = "",
+) -> str | None:
+    caps = {str(c).lower() for c in (capabilities or [])}
+    if param_active_b or "moe" in caps:
+        return "moe"
+    if "dense" in caps:
+        return "dense"
+    text = f"{name} {slug}".lower()
+    if re.search(r"a\d+b|moe", text):
+        return "moe"
+    if param_b is not None:
+        return "dense"
+    return None
+
+
+def attach_model_params(m: dict, cat: dict) -> None:
+    """Dense: total params. MoE: active-forward / total (matches portal inventory UI)."""
+    name = cat.get("name") or m.get("name") or ""
+    slug = cat.get("slug") or m.get("slug") or ""
+    caps = cat.get("capabilities") or m.get("capabilities") or []
+    param_b = cat.get("param_b") or parse_param_b(name, slug)
+    param_active_b = cat.get("param_active_b") or parse_active_param_b(name, slug)
+    arch = infer_architecture(
+        capabilities=caps,
+        param_b=param_b,
+        param_active_b=param_active_b,
+        name=name,
+        slug=slug,
+    )
+    if arch == "dense" and param_b is not None and not param_active_b:
+        param_active_b = param_b
+
+    is_moe = bool(
+        param_active_b
+        and param_b
+        and param_active_b < param_b
+    )
+    if is_moe:
+        active = _fmt_param_b(param_active_b)
+        total = _fmt_param_b(param_b)
+        m["params_label"] = f"{active} / {total}"
+        m["params_detail"] = f"{active} active / {total} total"
+    elif param_b is not None:
+        label = _fmt_param_b(param_b)
+        m["params_label"] = label
+        m["params_detail"] = label
+    else:
+        m["params_label"] = None
+        m["params_detail"] = None
+
+    m["param_b"] = param_b
+    m["param_active_b"] = param_active_b
+    m["architecture"] = arch
+    m["is_moe"] = is_moe
+
+
+def fetch_hf_model_meta(hf_repo: str, timeout: int = 8) -> dict:
+    """Public HF model API — release date + whether the repo is reachable."""
+    url = f"{HF_BASE}/api/models/{hf_repo}"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "sparkbench.dev/build (hf-meta)"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode())
+        created = data.get("createdAt") or data.get("lastModified")
+        release_date = created[:10] if created else None
+        return {"hf_ok": True, "release_date": release_date}
+    except urllib.error.HTTPError:
+        return {"hf_ok": False, "release_date": None}
+    except Exception:
+        return {"hf_ok": False, "release_date": None}
+
+
 def derive_use_cases(model):
     """Infer use-case tags from name + capabilities.
 
@@ -235,7 +368,6 @@ def load_data():
             "name": cat.get("name") or slug,
             "lab": cat.get("lab") or lab,
             "slug": slug,
-            "param_b": cat.get("param_b"),
             "hf_url": f"{HF_BASE}/{hf_repo}",
             "hf_repo": hf_repo,
             "engine": v.get("engine") or v.get("tok_s_engine", ""),
@@ -246,7 +378,9 @@ def load_data():
             "updated_at": v.get("updated_at", ""),
             "note": _clean_note(v.get("note", "")),
             "why_downloaded": cat.get("why_downloaded", "").strip(),
+            "release_date": cat.get("release_date"),
         }
+        attach_model_params(m, cat)
         override = use_case_overrides.get(inv_path)
         if override:
             m["use_cases"] = sorted({str(t) for t in override})
@@ -315,7 +449,7 @@ def check_hf_link(url, timeout=8):
 
 
 def verify_links(models):
-    """HEAD-check every model's hf_url. Annotate `hf_ok` on each model.
+    """HF metadata per model: public link check + release date from HF API.
 
     Models with `hf_ok=False` render WITHOUT a HuggingFace link rather than
     shipping a 401/404. Skipped entirely when SKIP_LINK_CHECK=1 (fast local builds).
@@ -326,8 +460,14 @@ def verify_links(models):
         print("  link check: skipped (SKIP_LINK_CHECK=1)")
         return
     broken = []
+    dated = 0
     for m in models:
-        ok = check_hf_link(m["hf_url"])
+        meta = fetch_hf_model_meta(m["hf_repo"])
+        if meta.get("release_date") and not m.get("release_date"):
+            m["release_date"] = meta["release_date"]
+        if m.get("release_date"):
+            dated += 1
+        ok = meta.get("hf_ok") or check_hf_link(m["hf_url"])
         m["hf_ok"] = ok
         if not ok:
             broken.append(m)
@@ -337,6 +477,7 @@ def verify_links(models):
             print(f"    - {m['id']:55s} → {m['hf_url']}")
     else:
         print(f"  link check: all {len(models)} HF links resolve")
+    print(f"  release dates: {dated}/{len(models)} models")
 
 
 def build():
