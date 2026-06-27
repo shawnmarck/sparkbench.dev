@@ -17,8 +17,12 @@ TOOL_REPO = "https://github.com/shawnmarck/sparkbench"
 HF_BASE = "https://huggingface.co"
 EDITORS_PICK_ID = "qwen/qwen3.6-27b"
 
+PRODUCT_ENGINES = ["eugr", "llamacpp", "ds4"]
+
 ENGINE_LABELS = {
     "eugr": "vLLM",
+    "llamacpp": "llama.cpp",
+    "ds4": "ds4",
 }
 
 
@@ -258,7 +262,7 @@ def load_data():
 
 def compute_stats(models):
     tok_values = [m["tok_s"] for m in models if m["tok_s"]]
-    engines = sorted({m["engine"] for m in models if m["engine"]})
+    engines_in_data = sorted({m["engine"] for m in models if m["engine"]})
     peak_model = max(models, key=lambda m: m["tok_s"] or 0) if models else None
     editors_pick = next((m for m in models if m["id"] == EDITORS_PICK_ID), None)
     golden_models = [m for m in models if m.get("golden_profile")]
@@ -268,7 +272,8 @@ def compute_stats(models):
         "peak_tok_s": max(tok_values) if tok_values else 0,
         "peak_throughput": peak_model["throughput"] if peak_model and peak_model.get("tok_s") else None,
         "median_tok_s": sorted(tok_values)[len(tok_values) // 2] if tok_values else 0,
-        "engines": engines,
+        "engines": PRODUCT_ENGINES,
+        "engines_in_data": engines_in_data,
         "editors_pick": editors_pick,
         "max_ctx_golden_count": len(golden_models),
         "max_ctx_bench_count": len(max_ctx_benched),

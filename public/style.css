@@ -602,6 +602,21 @@ main {
 .uc-card li .uc-recipe:hover { color: var(--accent); }
 
 /* ─── "Run it" / install section ─── */
+.run-demo {
+  margin: 0 0 40px;
+  text-align: center;
+}
+.run-demo img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.run-demo figcaption {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
 .run-section {
   display: grid;
   grid-template-columns: 1fr 1.1fr;

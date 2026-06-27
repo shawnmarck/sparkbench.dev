@@ -166,19 +166,30 @@
 
 <!-- ─── Run it yourself ─── -->
 <section class="section section-block">
+  <div class="section-head">
+    <h2>Run it on your own&nbsp;Spark</h2>
+    <div class="meta">Same tool that generates this leaderboard</div>
+  </div>
+
+  <figure class="run-demo">
+    <img src="https://raw.githubusercontent.com/shawnmarck/sparkbench/main/docs/assets/sparkbench-demo.gif"
+         width="820" alt="SparkBench portal: Inference, Models, and Explore tabs"
+         loading="lazy">
+    <figcaption>Portal — switch profiles, browse models, explore HuggingFace</figcaption>
+  </figure>
+
   <div class="run-section">
     <div class="copy">
-      <h2>Run it on your own&nbsp;Spark.</h2>
       <p>
-        SparkBench is the operator tool behind this site. It bundles a portal,
-        model inventory, inference control plane, and reproducible benchmark harness —
-        the same one that generates the numbers you're looking at.
+        SparkBench is the operator tool behind this site. Portal, model inventory,
+        three inference engines (vLLM, llama.cpp, ds4), reproducible bench v2, and an
+        OpenAI gateway — one CLI on your GB10.
       </p>
       <ul>
-        <li><b>One CLI</b> — discover, download, switch, bench, promote.</li>
-        <li><b>Real recipes</b> — vLLM (eugr), llama.cpp, ds4. Auto-scaffolded from weights.</li>
-        <li><b>Idempotent installers</b> — re-run anything without breaking things.</li>
-        <li><b>Your data, your box</b> — nothing leaves the LAN unless you ship it back here.</li>
+        <li><b>One bootstrap command</b> — clone, host env, portal, APIs, CLI.</li>
+        <li><b>Three engines</b> — eugr, llama.cpp, ds4. One GPU at a time.</li>
+        <li><b>Real recipes</b> — auto-scaffolded from weights; golden map in git.</li>
+        <li><b>Your data, your box</b> — nothing leaves the LAN unless you ship it here.</li>
       </ul>
     </div>
     <div class="code-block">
@@ -186,18 +197,16 @@
         <span>install</span>
         <span>shell</span>
       </div>
-<pre><span class="cmt"># Clone to /opt/spark on your DGX Spark</span>
-git <span class="kw">clone</span> https://github.com/shawnmarck/sparkbench.git /opt/spark
-<span class="kw">cd</span> /opt/spark
+<pre><span class="cmt"># One command — core stack (no GPU engine yet)</span>
+curl -fsSL https://raw.githubusercontent.com/shawnmarck/sparkbench/main/scripts/bootstrap-sparkbench.sh | sudo bash
 
-<span class="cmt"># Bootstrap CLI, model inventory, inference API</span>
-sudo bash install/20-spark-cli.sh
-sudo bash install/04-model-inventory.sh
-sudo bash install/17-inference-api.sh
+<span class="cmt"># Then pick an engine + gateway</span>
+sudo bash install/spark-install engine eugr
+sudo bash install/spark-install gateway
 
-<span class="cmt"># Browse, switch, bench</span>
+<span class="cmt"># Switch, bench, serve</span>
 spark inference list
-spark inference up qwen36-q4-llama
+spark inference up qwen36-nvfp4
 spark inference bench</pre>
     </div>
   </div>
