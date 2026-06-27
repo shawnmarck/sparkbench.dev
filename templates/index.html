@@ -1,101 +1,223 @@
 {% extends "base.html" %}
 
-{% block title %}SparkBench — GB10 Model Leaderboard{% endblock %}
-
 {% block content %}
-<section class="hero">
-  <h1>GB10 Model Leaderboard</h1>
-  <p>{{ model_count }} models benchmarked on a single DGX Spark GB10. Sorted by throughput (tok/s).</p>
-</section>
 
-<section class="controls">
-  <input type="search" id="search" placeholder="Search models…" autocomplete="off">
-  <div class="filters">
-    <button class="filter active" data-engine="">All</button>
-    <button class="filter" data-engine="eugr">eugr (vLLM)</button>
-    <button class="filter" data-engine="llamacpp">llama.cpp</button>
-    <button class="filter" data-engine="ds4">ds4</button>
+<!-- ─── Hero ─── -->
+<section class="hero">
+  <div class="hero-eyebrow">Open-source · DGX Spark · GB10</div>
+  <h1>What actually runs on a&nbsp;<em>DGX Spark</em>.</h1>
+  <p class="hero-lede">
+    SparkBench is a community lab for the NVIDIA GB10. We benchmark every model on real hardware,
+    publish reproducible recipes for coding, agents, and reasoning, and ship the tooling so you can
+    run it on your own box.
+  </p>
+  <div class="hero-cta">
+    <a href="#leaderboard" class="btn btn-primary">Browse the leaderboard</a>
+    <a href="{{ tool_repo }}" class="btn btn-ghost" target="_blank" rel="noopener">Get the tool ↗</a>
+  </div>
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <div class="num">{{ stats.count }}</div>
+      <div class="label">Models benched</div>
+    </div>
+    <div class="hero-stat">
+      <div class="num">{{ stats.peak_tok_s }}<span class="unit">tok/s</span></div>
+      <div class="label">Peak throughput</div>
+    </div>
+    <div class="hero-stat">
+      <div class="num">{{ stats.engines|length }}</div>
+      <div class="label">Inference engines</div>
+    </div>
+    <div class="hero-stat">
+      <div class="num">1</div>
+      <div class="label">GB10 box</div>
+    </div>
   </div>
 </section>
 
-<table class="leaderboard" id="leaderboard">
-  <thead>
-    <tr>
-      <th class="col-rank">#</th>
-      <th class="col-model sortable" data-col="name">Model</th>
-      <th class="col-params sortable" data-col="param_b">Params</th>
-      <th class="col-engine sortable" data-col="engine">Engine</th>
-      <th class="col-toks sortable sort-desc" data-col="tok_s">tok/s ↓</th>
-      <th class="col-links">Links</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for m in models %}
-    <tr data-engine="{{ m.engine }}" data-name="{{ m.name|lower }} {{ m.id|lower }}">
-      <td class="col-rank">{{ loop.index }}</td>
-      <td class="col-model">
-        <a href="/models/{{ m.id.replace('/', '_') }}/">{{ m.name }}</a>
-        <span class="lab">{{ m.lab }}</span>
-      </td>
-      <td class="col-params">{% if m.param_b %}{{ m.param_b }}B{% else %}—{% endif %}</td>
-      <td class="col-engine"><span class="engine-tag engine-{{ m.engine }}">{{ m.engine }}</span></td>
-      <td class="col-toks">{% if m.tok_s %}<strong>{{ m.tok_s }}</strong>{% else %}—{% endif %}</td>
-      <td class="col-links"><a href="{{ m.hf_url }}" target="_blank" rel="noopener" title="HuggingFace">HF ↗</a></td>
-    </tr>
+<div class="divider"></div>
+
+<!-- ─── Leaderboard ─── -->
+<section class="section section-block" id="leaderboard">
+  <div class="section-head">
+    <h2>Leaderboard</h2>
+    <div class="meta">Sorted by throughput · single GB10 · {{ stats.count }} models</div>
+  </div>
+
+  <div class="lb-controls">
+    <div class="lb-search">
+      <input type="search" id="search" placeholder="Search models, labs, capabilities…" autocomplete="off">
+    </div>
+    <div class="lb-filters">
+      <button class="lb-filter active" data-engine="">All engines</button>
+      {% for eng in stats.engines %}
+      <button class="lb-filter" data-engine="{{ eng }}">{{ eng }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <table class="lb-table" id="leaderboard-table">
+    <thead>
+      <tr>
+        <th class="lb-rank">#</th>
+        <th class="lb-name">Model</th>
+        <th class="lb-tags">For</th>
+        <th class="lb-engine">Engine</th>
+        <th class="lb-params">Params</th>
+        <th class="lb-toks sortable sort-active" data-col="tok_s">Throughput</th>
+        <th class="lb-link"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in models %}
+      <tr data-engine="{{ m.engine }}"
+          data-toks="{{ m.tok_s or 0 }}"
+          data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.use_cases|join(' ')))|lower }}">
+        <td class="lb-rank">{{ "%02d"|format(loop.index) }}</td>
+        <td class="lb-name">
+          <a href="/models/{{ m.id.replace('/', '_') }}/">{{ m.name }}</a>
+          <span class="lab">{{ m.id }}</span>
+        </td>
+        <td class="lb-tags">
+          {% for uc in m.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
+        </td>
+        <td class="lb-engine"><span class="engine-{{ m.engine }}">{{ m.engine }}</span></td>
+        <td class="lb-params">{% if m.param_b %}{{ m.param_b }}B{% else %}—{% endif %}</td>
+        <td class="lb-toks">
+          <div class="lb-toks-cell">
+            <div class="lb-bar"><div class="lb-bar-fill" style="width: {{ m.tok_s_pct }}%"></div></div>
+            <div class="lb-toks-value">{% if m.tok_s %}{{ m.tok_s }}<span class="unit">t/s</span>{% else %}—{% endif %}</div>
+          </div>
+        </td>
+        <td class="lb-link"><a href="{{ m.hf_url }}" target="_blank" rel="noopener" title="HuggingFace">HF ↗</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Recipes by use case ─── -->
+<section class="section section-block" id="recipes">
+  <div class="section-head">
+    <h2>Recipes by task</h2>
+    <div class="meta">Pick by what you're building</div>
+  </div>
+
+  <div class="uc-grid">
+    {% for use_case, items in use_case_groups %}
+    <div class="uc-card">
+      <h3>{{ use_case }}</h3>
+      <ul>
+        {% for m in items %}
+        <li>
+          <a href="/models/{{ m.id.replace('/', '_') }}/">
+            <span>{{ m.name }}</span>
+            <span class="toks">{{ m.tok_s }} t/s</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
     {% endfor %}
-  </tbody>
-</table>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ─── Run it yourself ─── -->
+<section class="section section-block">
+  <div class="run-section">
+    <div class="copy">
+      <h2>Run it on your own&nbsp;Spark.</h2>
+      <p>
+        SparkBench is the operator tool behind this site. It bundles a portal,
+        model inventory, inference control plane, and reproducible benchmark harness —
+        the same one that generates the numbers you're looking at.
+      </p>
+      <ul>
+        <li><b>One CLI</b> — discover, download, switch, bench, promote.</li>
+        <li><b>Real recipes</b> — vLLM (eugr), llama.cpp, ds4. Auto-scaffolded from weights.</li>
+        <li><b>Idempotent installers</b> — re-run anything without breaking things.</li>
+        <li><b>Your data, your box</b> — nothing leaves the LAN unless you ship it back here.</li>
+      </ul>
+    </div>
+    <div class="code-block">
+      <div class="code-block-head">
+        <span>install</span>
+        <span>shell</span>
+      </div>
+<pre><span class="cmt"># Clone to /opt/spark on your DGX Spark</span>
+git <span class="kw">clone</span> https://github.com/shawnmarck/sparkbench.git /opt/spark
+<span class="kw">cd</span> /opt/spark
+
+<span class="cmt"># Bootstrap CLI, model inventory, inference API</span>
+sudo bash install/20-spark-cli.sh
+sudo bash install/04-model-inventory.sh
+sudo bash install/17-inference-api.sh
+
+<span class="cmt"># Browse, switch, bench</span>
+spark inference list
+spark inference up qwen36-q4-llama
+spark inference bench</pre>
+    </div>
+  </div>
+</section>
 
 <script>
-  const rows = Array.from(document.querySelectorAll('#leaderboard tbody tr'));
-  let activeEngine = '';
-  let searchVal = '';
+(function () {
+  const rows = Array.from(document.querySelectorAll('#leaderboard-table tbody tr'));
+  const search = document.getElementById('search');
+  const filters = document.querySelectorAll('.lb-filter');
+  let engine = '';
+  let q = '';
+  let sortCol = 'tok_s';
+  let sortDir = -1;
 
-  function applyFilters() {
+  function apply() {
     let rank = 1;
     rows.forEach(r => {
-      const engineMatch = !activeEngine || r.dataset.engine === activeEngine;
-      const searchMatch = !searchVal || r.dataset.name.includes(searchVal);
-      const show = engineMatch && searchMatch;
+      const okE = !engine || r.dataset.engine === engine;
+      const okQ = !q || r.dataset.name.includes(q);
+      const show = okE && okQ;
       r.hidden = !show;
-      if (show) r.querySelector('.col-rank').textContent = rank++;
+      if (show) r.querySelector('.lb-rank').textContent = String(rank++).padStart(2, '0');
     });
   }
 
-  document.querySelectorAll('.filter').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeEngine = btn.dataset.engine;
-      applyFilters();
-    });
+  filters.forEach(b => b.addEventListener('click', () => {
+    filters.forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    engine = b.dataset.engine;
+    apply();
+  }));
+
+  search.addEventListener('input', e => {
+    q = e.target.value.toLowerCase().trim();
+    apply();
   });
 
-  document.getElementById('search').addEventListener('input', e => {
-    searchVal = e.target.value.toLowerCase().trim();
-    applyFilters();
-  });
-
-  // Column sort
-  let sortCol = 'tok_s', sortDir = -1;
-  const tbody = document.querySelector('#leaderboard tbody');
-  document.querySelectorAll('.sortable').forEach(th => {
-    th.style.cursor = 'pointer';
+  document.querySelectorAll('.lb-table thead th.sortable').forEach(th => {
     th.addEventListener('click', () => {
       const col = th.dataset.col;
-      if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = -1; }
-      document.querySelectorAll('.sortable').forEach(h => h.classList.remove('sort-asc','sort-desc'));
-      th.classList.add(sortDir === -1 ? 'sort-desc' : 'sort-asc');
+      if (sortCol === col) sortDir *= -1;
+      else { sortCol = col; sortDir = -1; }
+      document.querySelectorAll('.lb-table thead th.sortable').forEach(t => {
+        t.classList.remove('sort-active', 'asc');
+      });
+      th.classList.add('sort-active');
+      if (sortDir === 1) th.classList.add('asc');
+      const tbody = document.querySelector('#leaderboard-table tbody');
       const sorted = rows.slice().sort((a, b) => {
-        const av = a.cells[['','name','param_b','engine','tok_s'].indexOf(col)]?.textContent.trim() || '';
-        const bv = b.cells[['','name','param_b','engine','tok_s'].indexOf(col)]?.textContent.trim() || '';
-        const an = parseFloat(av), bn = parseFloat(bv);
-        if (!isNaN(an) && !isNaN(bn)) return (an - bn) * sortDir;
-        return av.localeCompare(bv) * sortDir;
+        const av = parseFloat(a.dataset[col] || a.dataset.toks);
+        const bv = parseFloat(b.dataset[col] || b.dataset.toks);
+        return (av - bv) * sortDir;
       });
       sorted.forEach(r => tbody.appendChild(r));
-      applyFilters();
+      apply();
     });
   });
+})();
 </script>
 {% endblock %}

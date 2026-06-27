@@ -1,56 +1,84 @@
 {% extends "base.html" %}
 
-{% block title %}{{ model.name }} — SparkBench{% endblock %}
-{% block description %}{{ model.name }} on DGX Spark GB10: {{ model.tok_s }} tok/s via {{ model.engine }}.{% endblock %}
+{% block title %}{{ model.name }} · {{ model.tok_s }} tok/s on Spark — SparkBench{% endblock %}
+{% block description %}{{ model.name }} runs at {{ model.tok_s }} tok/s on a single DGX Spark GB10 via {{ model.engine }}.{% endblock %}
 
 {% block content %}
-<div class="breadcrumb"><a href="/">← Leaderboard</a></div>
+<section class="section tight">
+  <a href="/" class="detail-back">← Leaderboard</a>
 
-<section class="model-hero">
-  <h1>{{ model.name }}</h1>
-  <div class="model-meta">
-    <span class="engine-tag engine-{{ model.engine }}">{{ model.engine }}</span>
-    {% if model.param_b %}<span class="meta-chip">{{ model.param_b }}B params</span>{% endif %}
-    {% for cap in model.capabilities %}<span class="meta-chip">{{ cap }}</span>{% endfor %}
+  <div class="detail-hero">
+    <div class="detail-lab">{{ model.id }}</div>
+    <h1>{{ model.name }}</h1>
+    <div class="detail-meta">
+      <span class="tag"><span class="engine-{{ model.engine }}">{{ model.engine }}</span></span>
+      {% if model.param_b %}<span class="tag">{{ model.param_b }}B params</span>{% endif %}
+      {% for uc in model.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
+    </div>
   </div>
-</section>
 
-<div class="model-grid">
-  <div class="stat-card">
-    <div class="stat-label">Throughput</div>
-    <div class="stat-value">{% if model.tok_s %}{{ model.tok_s }} <span class="stat-unit">tok/s</span>{% else %}—{% endif %}</div>
+  <div class="stat-grid">
+    <div class="stat-cell accent">
+      <div class="lab">Throughput</div>
+      <div class="val">{% if model.tok_s %}{{ model.tok_s }}<span class="unit">tok/s</span>{% else %}—{% endif %}</div>
+    </div>
+    <div class="stat-cell">
+      <div class="lab">Engine</div>
+      <div class="val" style="font-size: 18px;">{{ model.engine or "—" }}</div>
+    </div>
+    <div class="stat-cell">
+      <div class="lab">Status</div>
+      <div class="val" style="font-size: 18px; color: var(--green);">✓ verified</div>
+    </div>
+    {% if model.param_b %}
+    <div class="stat-cell">
+      <div class="lab">Parameters</div>
+      <div class="val">{{ model.param_b }}<span class="unit">B</span></div>
+    </div>
+    {% endif %}
   </div>
-  <div class="stat-card">
-    <div class="stat-label">Engine</div>
-    <div class="stat-value">{{ model.engine or "—" }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Status</div>
-    <div class="stat-value status-works">✓ works</div>
-  </div>
+
   {% if model.golden_profile %}
-  <div class="stat-card">
-    <div class="stat-label">Golden profile</div>
-    <div class="stat-value mono">{{ model.golden_profile }}</div>
+  <div class="detail-section">
+    <h3>Golden profile</h3>
+    <p class="mono">{{ model.golden_profile }}</p>
   </div>
   {% endif %}
-</div>
 
-{% if model.note %}
-<section class="model-section">
-  <h2>Notes</h2>
-  <p class="model-note">{{ model.note }}</p>
+  {% if model.capabilities %}
+  <div class="detail-section">
+    <h3>Capabilities</h3>
+    <div style="display:flex; flex-wrap:wrap; gap:6px;">
+      {% for cap in model.capabilities %}<span class="tag">{{ cap }}</span>{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if model.why_downloaded %}
+  <div class="detail-section">
+    <h3>Why we run it</h3>
+    <p>{{ model.why_downloaded }}</p>
+  </div>
+  {% endif %}
+
+  {% if model.note %}
+  <div class="detail-section">
+    <h3>Bench notes</h3>
+    <p class="mono" style="font-size:12.5px;">{{ model.note }}</p>
+  </div>
+  {% endif %}
+
+  <div class="detail-section">
+    <h3>Links</h3>
+    <ul class="detail-links">
+      <li><a href="{{ model.hf_url }}" target="_blank" rel="noopener">{{ model.hf_repo }} on HuggingFace ↗</a></li>
+      <li><a href="{{ tool_repo }}/blob/main/data/golden-recipes.yaml" target="_blank" rel="noopener">Golden recipe definition ↗</a></li>
+    </ul>
+  </div>
+
+  <div class="detail-meta-line">
+    <div>{% if model.updated_at %}Benchmarked {{ model.updated_at[:10] }}{% endif %}</div>
+    <div>SparkBench · GB10 · single node</div>
+  </div>
 </section>
-{% endif %}
-
-<section class="model-section">
-  <h2>Links</h2>
-  <ul class="link-list">
-    <li><a href="{{ model.hf_url }}" target="_blank" rel="noopener">{{ model.hf_repo }} on HuggingFace ↗</a></li>
-  </ul>
-</section>
-
-{% if model.updated_at %}
-<p class="updated-at">Last benchmarked: {{ model.updated_at[:10] }}</p>
-{% endif %}
 {% endblock %}
