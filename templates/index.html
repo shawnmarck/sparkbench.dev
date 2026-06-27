@@ -35,7 +35,7 @@
     </div>
     {% if stats.editors_pick %}
     <div class="hero-stat hero-stat-editors-pick">
-      <a class="hero-editors-pick" href="/models/{{ stats.editors_pick.id.replace('/', '_') }}/">
+      <a class="hero-editors-pick" href="{{ root }}models/{{ stats.editors_pick.id.replace('/', '_') }}/">
         <span class="hero-editors-pick-kicker">Editor's pick</span>
         <span class="hero-editors-pick-name">{{ stats.editors_pick.name }}</span>
         <span class="hero-editors-pick-meta">{{ stats.editors_pick.throughput }}</span>
@@ -71,7 +71,7 @@
     <div class="lb-filters">
       <button class="lb-filter active" data-engine="">All engines</button>
       {% for eng in stats.engines %}
-      <button class="lb-filter" data-engine="{{ eng }}">{{ eng }}</button>
+      <button class="lb-filter" data-engine="{{ eng }}">{{ eng | engine_label }}</button>
       {% endfor %}
     </div>
   </div>
@@ -102,7 +102,7 @@
           data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.use_cases|join(' ')))|lower }}">
         <td class="lb-rank">{{ "%02d"|format(loop.index) }}</td>
         <td class="lb-name">
-          <a href="/models/{{ m.id.replace('/', '_') }}/" class="lb-name-link">
+          <a href="{{ root }}models/{{ m.id.replace('/', '_') }}/" class="lb-name-link">
             {% if m.editors_pick %}
             <svg class="editors-pick-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"><title>Editor's pick</title><path d="M13 2L4 14H11L10 22L20 9H12L13 2Z" fill="currentColor"/></svg>
             {% endif %}
@@ -113,7 +113,7 @@
         <td class="lb-tags">
           {% for uc in m.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
         </td>
-        <td class="lb-engine"><span class="engine-{{ m.engine }}">{{ m.engine }}</span></td>
+        <td class="lb-engine"><span class="engine-{{ m.engine }}">{{ m.engine | engine_label }}</span></td>
         <td class="lb-params">{% if m.param_b %}{{ m.param_b }}B{% else %}—{% endif %}</td>
         <td class="lb-toks">
           <div class="lb-toks-cell">
@@ -147,7 +147,7 @@
       <ul>
         {% for m in items %}
         <li>
-          <a href="/models/{{ m.id.replace('/', '_') }}/">
+          <a href="{{ root }}models/{{ m.id.replace('/', '_') }}/">
             <span>{{ m.name }}</span>
             <span class="toks">{{ m.throughput }}</span>
           </a>

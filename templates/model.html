@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 
 {% block title %}{{ model.name }} · {{ model.throughput }} on Spark — SparkBench{% endblock %}
-{% block description %}{{ model.name }} runs at {{ model.throughput }} on a single DGX Spark GB10 via {{ model.engine }}.{% endblock %}
+{% block description %}{{ model.name }} runs at {{ model.throughput }} on a single DGX Spark GB10 via {{ model.engine | engine_label }}.{% endblock %}
 {% block canonical_path %}/models/{{ model.id.replace('/', '_') }}/{% endblock %}
 
 {% block content %}
 <section class="section tight">
-  <a href="/" class="detail-back">← Leaderboard</a>
+  <a href="{{ root }}" class="detail-back">← Leaderboard</a>
 
   <div class="detail-hero">
     <div class="detail-lab">{{ model.id }}</div>
     <h1>{{ model.name }}</h1>
     <div class="detail-meta">
-      <span class="tag"><span class="engine-{{ model.engine }}">{{ model.engine }}</span></span>
+      <span class="tag"><span class="engine-{{ model.engine }}">{{ model.engine | engine_label }}</span></span>
       {% if model.param_b %}<span class="tag">{{ model.param_b }}B params</span>{% endif %}
       {% for uc in model.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
     </div>
@@ -25,7 +25,7 @@
     </div>
     <div class="stat-cell">
       <div class="lab">Engine</div>
-      <div class="val" style="font-size: 18px;">{{ model.engine or "—" }}</div>
+      <div class="val" style="font-size: 18px;">{{ (model.engine | engine_label) if model.engine else "—" }}</div>
     </div>
     {% if model.param_b %}
     <div class="stat-cell">

@@ -17,6 +17,14 @@ TOOL_REPO = "https://github.com/shawnmarck/sparkbench"
 HF_BASE = "https://huggingface.co"
 EDITORS_PICK_ID = "qwen/qwen3.6-27b"
 
+ENGINE_LABELS = {
+    "eugr": "vLLM",
+}
+
+
+def engine_label(engine: str) -> str:
+    return ENGINE_LABELS.get(engine or "", engine or "—")
+
 
 CAPABILITY_LABELS = {
     "agentic": "Agents",
@@ -342,6 +350,7 @@ def build():
     shutil.copytree("public", f"{OUT_DIR}/public", dirs_exist_ok=True)
 
     env = Environment(loader=FileSystemLoader("templates"), autoescape=True)
+    env.filters["engine_label"] = engine_label
 
     ctx = {
         "models": models,
@@ -350,19 +359,25 @@ def build():
         "built_at": built_at,
         "tool_repo": TOOL_REPO,
         "site_url": SITE_URL,
+        "root": "",
     }
 
     index_tpl = env.get_template("index.html")
     with open(f"{OUT_DIR}/index.html", "w") as f:
         f.write(index_tpl.render(**ctx))
 
+    model_ctx = {**ctx, "root": "../../"}
     for m in models:
         safe = m["id"].replace("/", "_")
         os.makedirs(f"{OUT_DIR}/models/{safe}", exist_ok=True)
         detail_tpl = env.get_template("model.html")
         with open(f"{OUT_DIR}/models/{safe}/index.html", "w") as f:
-            sub_ctx = {k: v for k, v in ctx.items() if k != "models"}
-            f.write(detail_tpl.render(model=m, **sub_ctx))
+            f.write(detail_tpl.render(model=m, **model_ctx))
+
+    open(f"{OUT_DIR}/.nojekyll", "a").close()
+    if "sparkbench.dev" in SITE_URL:
+        with open(f"{OUT_DIR}/CNAME", "w") as f:
+            f.write("sparkbench.dev\n")
 
     write_sitemap(models)
     write_robots()
