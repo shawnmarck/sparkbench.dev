@@ -37,6 +37,10 @@ jobs:
           curl -fsSL "$BASE/model-verification.yaml" -o data/model-verification.yaml
           curl -fsSL "$BASE/model-catalog.yaml"      -o data/model-catalog.yaml
           curl -fsSL "$BASE/golden-recipes.yaml"     -o data/golden-recipes.yaml
+          curl -fsSL "$BASE/profile-bench-context.yaml" -o data/profile-bench-context.yaml.new \
+            && mv data/profile-bench-context.yaml.new data/profile-bench-context.yaml || true
+          curl -fsSL "$BASE/use-cases.yaml" -o data/use-cases.yaml.new \
+            && mv data/use-cases.yaml.new data/use-cases.yaml || true
 
       - name: Build site
         run: python build.py

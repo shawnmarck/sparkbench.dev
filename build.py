@@ -4,6 +4,8 @@
 import os
 import re
 import shutil
+import urllib.error
+import urllib.request
 import yaml
 from datetime import datetime, timezone
 from jinja2 import Environment, FileSystemLoader
@@ -37,6 +39,59 @@ def _clean_note(note):
 
 
 _NAME_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_PROFILE_CTX_SUFFIX_RE = re.compile(r"(?:^|-)(\d+)(k|m)(?:-|$)", re.I)
+
+
+def format_ctx_label(ctx: int) -> str:
+    """Human label for a context window size (e.g. 32768 → 32k)."""
+    if ctx >= 1_048_576:
+        if ctx % 1_048_576 == 0:
+            return f"{ctx // 1_048_576}M"
+        return f"{ctx / 1_048_576:.1f}M"
+    if ctx >= 1024:
+        k = ctx / 1024
+        if abs(k - round(k)) < 0.05:
+            return f"{int(round(k))}k"
+        return f"{k:.0f}k"
+    return str(ctx)
+
+
+def parse_ctx_from_profile_id(profile_id: str) -> int | None:
+    m = _PROFILE_CTX_SUFFIX_RE.search(profile_id or "")
+    if not m:
+        return None
+    n, unit = int(m.group(1)), m.group(2).lower()
+    return n * (1_000_000 if unit == "m" else 1000)
+
+
+def load_profile_bench_context() -> dict[str, dict]:
+    path = f"{DATA_DIR}/profile-bench-context.yaml"
+    if not os.path.isfile(path):
+        return {}
+    with open(path) as f:
+        data = yaml.safe_load(f) or {}
+    raw = data.get("profiles") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def resolve_tok_s_ctx(v: dict, profile_ctx: dict[str, dict]) -> int | None:
+    """Context window used for the tok/s measurement."""
+    if v.get("tok_s_ctx"):
+        return int(v["tok_s_ctx"])
+    profile_id = v.get("tok_s_profile") or ""
+    entry = profile_ctx.get(profile_id) if profile_id else None
+    if isinstance(entry, dict) and entry.get("ctx"):
+        return int(entry["ctx"])
+    return parse_ctx_from_profile_id(profile_id)
+
+
+def format_throughput(tok_s, ctx: int | None) -> str:
+    if not tok_s:
+        return "—"
+    base = f"{tok_s} t/s"
+    if ctx:
+        return f"{base} @ {format_ctx_label(ctx)}"
+    return base
 
 
 def derive_use_cases(model):
@@ -75,15 +130,45 @@ def load_data():
         catalog_raw = yaml.safe_load(f)["models"]
     with open(f"{DATA_DIR}/golden-recipes.yaml") as f:
         golden_raw = yaml.safe_load(f)
+    use_case_overrides = {}
+    uc_path = f"{DATA_DIR}/use-cases.yaml"
+    if os.path.exists(uc_path):
+        with open(uc_path) as f:
+            uc_doc = yaml.safe_load(f) or {}
+        use_case_overrides = (uc_doc.get("models") or {})
 
     catalog = {m["id"]: m for m in catalog_raw}
     golden = golden_raw.get("golden", {})
+
+    # Fallback index: for verification keys that don't match a catalog id
+    # exactly (e.g. inventory `nvidia/qwen3.6-35b-a3b` vs catalog
+    # `nvidia/qwen3.6-35b-a3b-nvfp4`), pick the first catalog row in the
+    # same lab whose slug shares the verification slug as a prefix.
+    by_lab = {}
+    for cat_row in catalog_raw:
+        cid = cat_row["id"]
+        if "/" in cid:
+            clab, cslug = cid.split("/", 1)
+            by_lab.setdefault(clab, []).append((cslug, cat_row))
+
+    def resolve_catalog(inv_path):
+        if inv_path in catalog:
+            return catalog[inv_path]
+        if "/" not in inv_path:
+            return {}
+        lab, slug = inv_path.split("/", 1)
+        for cslug, row in by_lab.get(lab, []):
+            if cslug == slug or cslug.startswith(slug + "-") or slug.startswith(cslug + "-"):
+                return row
+        return {}
+
+    profile_ctx = load_profile_bench_context()
 
     models = []
     for inv_path, v in verification.items():
         if v.get("spark_status") != "works":
             continue
-        cat = catalog.get(inv_path, {})
+        cat = resolve_catalog(inv_path)
         lab, slug = inv_path.split("/", 1) if "/" in inv_path else ("", inv_path)
         hf_repo = cat.get("hf_repo") or inv_path
         m = {
@@ -96,13 +181,22 @@ def load_data():
             "hf_repo": hf_repo,
             "engine": v.get("engine") or v.get("tok_s_engine", ""),
             "tok_s": v.get("tok_s"),
+            "tok_s_profile": v.get("tok_s_profile"),
             "capabilities": cat.get("capabilities", []),
             "golden_profile": golden.get(inv_path),
             "updated_at": v.get("updated_at", ""),
             "note": _clean_note(v.get("note", "")),
             "why_downloaded": cat.get("why_downloaded", "").strip(),
         }
-        m["use_cases"] = derive_use_cases(m)
+        override = use_case_overrides.get(inv_path)
+        if override:
+            m["use_cases"] = sorted({str(t) for t in override})
+        else:
+            m["use_cases"] = derive_use_cases(m)
+        ctx = resolve_tok_s_ctx(v, profile_ctx)
+        m["tok_s_ctx"] = ctx
+        m["tok_s_ctx_label"] = format_ctx_label(ctx) if ctx else None
+        m["throughput"] = format_throughput(m["tok_s"], ctx)
         models.append(m)
 
     models.sort(key=lambda m: m["tok_s"] or 0, reverse=True)
@@ -112,9 +206,11 @@ def load_data():
 def compute_stats(models):
     tok_values = [m["tok_s"] for m in models if m["tok_s"]]
     engines = sorted({m["engine"] for m in models if m["engine"]})
+    peak_model = max(models, key=lambda m: m["tok_s"] or 0) if models else None
     return {
         "count": len(models),
         "peak_tok_s": max(tok_values) if tok_values else 0,
+        "peak_throughput": peak_model["throughput"] if peak_model and peak_model.get("tok_s") else None,
         "median_tok_s": sorted(tok_values)[len(tok_values) // 2] if tok_values else 0,
         "engines": engines,
     }
@@ -130,8 +226,49 @@ def group_by_use_case(models):
     return [(uc, groups[uc][:6]) for uc in order if uc in groups]
 
 
+def check_hf_link(url, timeout=8):
+    """HEAD-check a HuggingFace URL. Returns True for 200, False for 4xx/5xx/errors."""
+    req = urllib.request.Request(
+        url, method="HEAD",
+        headers={"User-Agent": "sparkbench.dev/build (link-check)"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status == 200
+    except urllib.error.HTTPError:
+        return False
+    except Exception:
+        return False
+
+
+def verify_links(models):
+    """HEAD-check every model's hf_url. Annotate `hf_ok` on each model.
+
+    Models with `hf_ok=False` render WITHOUT a HuggingFace link rather than
+    shipping a 401/404. Skipped entirely when SKIP_LINK_CHECK=1 (fast local builds).
+    """
+    if os.environ.get("SKIP_LINK_CHECK") == "1":
+        for m in models:
+            m["hf_ok"] = True
+        print("  link check: skipped (SKIP_LINK_CHECK=1)")
+        return
+    broken = []
+    for m in models:
+        ok = check_hf_link(m["hf_url"])
+        m["hf_ok"] = ok
+        if not ok:
+            broken.append(m)
+    if broken:
+        print(f"  link check: {len(broken)} model(s) without a public HF link:")
+        for m in broken:
+            print(f"    - {m['id']:55s} → {m['hf_url']}")
+    else:
+        print(f"  link check: all {len(models)} HF links resolve")
+
+
 def build():
     models = load_data()
+    verify_links(models)
     stats = compute_stats(models)
     use_case_groups = group_by_use_case(models)
     built_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")

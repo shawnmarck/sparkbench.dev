@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}{{ model.name }} · {{ model.tok_s }} tok/s on Spark — SparkBench{% endblock %}
-{% block description %}{{ model.name }} runs at {{ model.tok_s }} tok/s on a single DGX Spark GB10 via {{ model.engine }}.{% endblock %}
+{% block title %}{{ model.name }} · {{ model.throughput }} on Spark — SparkBench{% endblock %}
+{% block description %}{{ model.name }} runs at {{ model.throughput }} on a single DGX Spark GB10 via {{ model.engine }}.{% endblock %}
 {% block canonical_path %}/models/{{ model.id.replace('/', '_') }}/{% endblock %}
 
 {% block content %}
@@ -21,7 +21,7 @@
   <div class="stat-grid">
     <div class="stat-cell accent">
       <div class="lab">Throughput</div>
-      <div class="val">{% if model.tok_s %}{{ model.tok_s }}<span class="unit">tok/s</span>{% else %}—{% endif %}</div>
+      <div class="val">{% if model.tok_s %}{{ model.tok_s }}<span class="unit">t/s</span>{% if model.tok_s_ctx_label %}<span class="unit ctx-at">@ {{ model.tok_s_ctx_label }}</span>{% endif %}{% else %}—{% endif %}</div>
     </div>
     <div class="stat-cell">
       <div class="lab">Engine</div>
@@ -74,7 +74,11 @@
   <div class="detail-section">
     <h3>Links</h3>
     <ul class="detail-links">
+      {% if model.hf_ok %}
       <li><a href="{{ model.hf_url }}" target="_blank" rel="noopener">{{ model.hf_repo }} on HuggingFace ↗</a></li>
+      {% else %}
+      <li><span class="hf-gated">{{ model.hf_repo }}</span> — gated or private repo on HuggingFace, no public link available.</li>
+      {% endif %}
       <li><a href="{{ tool_repo }}/blob/main/data/golden-recipes.yaml" target="_blank" rel="noopener">Golden recipe definition ↗</a></li>
     </ul>
   </div>

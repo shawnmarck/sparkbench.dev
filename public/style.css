@@ -212,6 +212,11 @@ main {
   font-feature-settings: "tnum";
   line-height: 1.1;
 }
+.hero-stat .num.throughput-display {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
 .hero-stat .num .unit {
   font-size: 13px;
   color: var(--text-dim);
@@ -387,7 +392,7 @@ main {
 
 .lb-toks {
   text-align: right;
-  width: 200px;
+  width: 220px;
 }
 .lb-toks-cell {
   display: flex; align-items: center; gap: 12px;
@@ -410,8 +415,15 @@ main {
   font-weight: 600;
   color: var(--text);
   font-size: 13px;
-  min-width: 52px;
+  min-width: 88px;
   text-align: right;
+  line-height: 1.35;
+}
+.lb-toks-value .unit.ctx-at,
+.stat-cell .val .unit.ctx-at {
+  display: block;
+  margin-left: 0;
+  margin-top: 2px;
 }
 .lb-toks-value .unit {
   color: var(--text-dim);
@@ -430,6 +442,14 @@ main {
   font-family: var(--font-mono);
 }
 .lb-link a:hover { color: var(--accent); }
+.hf-gated {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: help;
+}
 
 /* ─── Use case grid ─── */
 .uc-grid {

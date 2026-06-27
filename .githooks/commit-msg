@@ -1,0 +1,12 @@
+#!/bin/sh
+# Strip AI Co-Authored-By trailers before a commit is recorded.
+if [ -n "$1" ] && [ -f "$1" ]; then
+  sed -i \
+    -e '/^Co-Authored-By:.*anthropic/I d' \
+    -e '/^Co-Authored-By:.*cursor/I d' \
+    -e '/^Co-Authored-By:.*openai/I d' \
+    -e '/^Co-Authored-By:.*copilot/I d' \
+    -e '/^Co-Authored-By:.*claude/I d' \
+    -e '/^Claude-Session:/d' \
+    "$1"
+fi

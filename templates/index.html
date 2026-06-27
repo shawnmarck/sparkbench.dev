@@ -22,7 +22,7 @@
       <div class="label">Models benched</div>
     </div>
     <div class="hero-stat">
-      <div class="num">{{ stats.peak_tok_s }}<span class="unit">tok/s</span></div>
+      <div class="num throughput-display">{% if stats.peak_throughput %}{{ stats.peak_throughput }}{% else %}—{% endif %}</div>
       <div class="label">Peak throughput</div>
     </div>
     <div class="hero-stat">
@@ -42,7 +42,7 @@
 <section class="section section-block" id="leaderboard">
   <div class="section-head">
     <h2>Leaderboard</h2>
-    <div class="meta">Sorted by throughput · single GB10 · {{ stats.count }} models</div>
+    <div class="meta">Sorted by throughput · context window shown per row · {{ stats.count }} models</div>
   </div>
 
   <div class="lb-controls">
@@ -87,10 +87,13 @@
         <td class="lb-toks">
           <div class="lb-toks-cell">
             <div class="lb-bar"><div class="lb-bar-fill" style="width: {{ m.tok_s_pct }}%"></div></div>
-            <div class="lb-toks-value">{% if m.tok_s %}{{ m.tok_s }}<span class="unit">t/s</span>{% else %}—{% endif %}</div>
+            <div class="lb-toks-value">{% if m.tok_s %}{{ m.tok_s }}<span class="unit">t/s</span>{% if m.tok_s_ctx_label %}<span class="unit ctx-at">@ {{ m.tok_s_ctx_label }}</span>{% endif %}{% else %}—{% endif %}</div>
           </div>
         </td>
-        <td class="lb-link"><a href="{{ m.hf_url }}" target="_blank" rel="noopener" title="HuggingFace">HF ↗</a></td>
+        <td class="lb-link">
+          {% if m.hf_ok %}<a href="{{ m.hf_url }}" target="_blank" rel="noopener" title="HuggingFace">HF ↗</a>
+          {%- else -%}<span class="hf-gated" title="Repo is gated or private — no public link">private</span>{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -115,7 +118,7 @@
         <li>
           <a href="/models/{{ m.id.replace('/', '_') }}/">
             <span>{{ m.name }}</span>
-            <span class="toks">{{ m.tok_s }} t/s</span>
+            <span class="toks">{{ m.throughput }}</span>
           </a>
           {% if m.golden_profile %}
           <a class="uc-recipe" href="{{ tool_repo }}/blob/main/data/golden-recipes.yaml" target="_blank" rel="noopener" title="Golden recipe">recipe ↗</a>
