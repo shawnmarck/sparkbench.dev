@@ -238,12 +238,12 @@ spark inference bench</pre>
   let sortDir = -1;
 
   const META = {
-    peak: 'Sorted by peak throughput · context window shown per row · {{ stats.count }} models',
-    'max-ctx': `Sorted by throughput at golden max-fit context · ${maxCtxBenchCount}/${maxCtxGoldenCount} golden recipes benched`,
+    peak: 'Sorted by fastest benchmark run · context window shown per row · {{ stats.count }} models',
+    'max-ctx': `Sorted by throughput at highest working context · ${maxCtxBenchCount}/${maxCtxGoldenCount} golden recipes benched`,
   };
   const NOTICE = {
-    peak: 'Rankings are by throughput (tok/s) on a single GB10',
-    'max-ctx': 'Max context view — each model at its golden max-fit recipe (lower tok/s, longer context)',
+    peak: 'Peak speed — best tok/s from any recorded run (usually at a smaller context)',
+    'max-ctx': 'Max context — highest working golden context and tok/s at that window',
   };
 
   function activeToks(row) {

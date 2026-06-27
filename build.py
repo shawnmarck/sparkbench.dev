@@ -54,6 +54,7 @@ def _clean_note(note):
 
 _NAME_TOKEN_RE = re.compile(r"[a-z0-9]+")
 _PROFILE_CTX_SUFFIX_RE = re.compile(r"(?:^|-)(\d+)(k|m)(?:-|$)", re.I)
+_GOLDEN_NOTE_CTX_RE = re.compile(r"golden\s+(\d+)([kKmM])/", re.I)
 
 
 def format_ctx_label(ctx: int) -> str:
@@ -96,6 +97,28 @@ def load_inference_benchmarks() -> dict[str, dict]:
         data = yaml.safe_load(f) or {}
     raw = data.get("profiles") or {}
     return raw if isinstance(raw, dict) else {}
+
+
+def load_inference_benchmark_history() -> dict[str, dict]:
+    path = f"{DATA_DIR}/inference-benchmark-history.yaml"
+    if not os.path.isfile(path):
+        return {}
+    with open(path) as f:
+        data = yaml.safe_load(f) or {}
+    raw = data.get("profiles") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def parse_golden_ctx_from_note(note: str) -> int | None:
+    """Parse context from Sparky golden headline notes, e.g. 'golden 256k/fp8 @ …'."""
+    m = _GOLDEN_NOTE_CTX_RE.search(note or "")
+    if not m:
+        return None
+    n = int(m.group(1))
+    unit = m.group(2).lower()
+    if unit == "m":
+        return n * 1_048_576
+    return n * 1024
 
 
 def resolve_profile_ctx(profile_id: str, profile_ctx: dict[str, dict]) -> int | None:
@@ -286,8 +309,83 @@ def derive_use_cases(model):
     return sorted(tags)
 
 
+def iter_profile_bench_points(
+    profile_id: str,
+    *,
+    profile_ctx: dict[str, dict],
+    benchmarks: dict[str, dict],
+    history: dict[str, dict],
+    verification_tok_s: float | None = None,
+    verification_ctx: int | None = None,
+) -> list[tuple[float, int | None]]:
+    """All (tok_s, ctx) measurements recorded for one inference profile."""
+    points: list[tuple[float, int | None]] = []
+    ctx_base = resolve_profile_ctx(profile_id, profile_ctx)
+
+    bench = benchmarks.get(profile_id) or {}
+    if bench.get("tok_s") is not None:
+        points.append((float(bench["tok_s"]), ctx_base))
+
+    hist = history.get(profile_id) or {}
+    for run in hist.get("runs") or []:
+        if run.get("tok_s") is not None:
+            points.append((float(run["tok_s"]), ctx_base))
+
+    if verification_tok_s is not None:
+        points.append((float(verification_tok_s), verification_ctx or ctx_base))
+
+    return points
+
+
+def attach_peak_bench(
+    m: dict,
+    v: dict,
+    profile_ctx: dict[str, dict],
+    benchmarks: dict[str, dict],
+    history: dict[str, dict],
+) -> None:
+    """Fastest tok/s across benchmark history for this model's profile(s)."""
+    profiles = {p for p in (m.get("golden_profile"), v.get("tok_s_profile")) if p}
+    if not profiles:
+        ctx = resolve_tok_s_ctx(v, profile_ctx)
+        m["tok_s_ctx"] = ctx
+        m["tok_s_ctx_label"] = format_ctx_label(ctx) if ctx else None
+        m["throughput"] = format_throughput(m.get("tok_s"), ctx)
+        return
+
+    note = v.get("note") or ""
+    golden_ctx = parse_golden_ctx_from_note(note)
+    ver_profile = v.get("tok_s_profile")
+    ver_ctx = resolve_tok_s_ctx(v, profile_ctx)
+    if golden_ctx and ver_profile == m.get("golden_profile"):
+        ver_ctx = golden_ctx
+
+    best_tok_s: float | None = None
+    best_ctx: int | None = None
+    for profile_id in profiles:
+        v_tok = v.get("tok_s") if ver_profile == profile_id else None
+        v_ctx = ver_ctx if ver_profile == profile_id else None
+        for tok_s, ctx in iter_profile_bench_points(
+            profile_id,
+            profile_ctx=profile_ctx,
+            benchmarks=benchmarks,
+            history=history,
+            verification_tok_s=v_tok,
+            verification_ctx=v_ctx,
+        ):
+            if best_tok_s is None or tok_s > best_tok_s:
+                best_tok_s = tok_s
+                best_ctx = ctx
+
+    if best_tok_s is not None:
+        m["tok_s"] = best_tok_s
+        m["tok_s_ctx"] = best_ctx
+        m["tok_s_ctx_label"] = format_ctx_label(best_ctx) if best_ctx else None
+        m["throughput"] = format_throughput(best_tok_s, best_ctx)
+
+
 def attach_max_ctx_bench(m: dict, v: dict, profile_ctx: dict, benchmarks: dict) -> None:
-    """Golden max-fit profile throughput — may differ from the headline tok/s."""
+    """Throughput at the golden max-fit context (from verification headline when present)."""
     golden_profile = m.get("golden_profile")
     if not golden_profile:
         m["max_ctx_tok_s"] = m.get("tok_s")
@@ -297,11 +395,22 @@ def attach_max_ctx_bench(m: dict, v: dict, profile_ctx: dict, benchmarks: dict) 
         m["max_ctx_pending"] = False
         return
 
-    ctx = resolve_profile_ctx(golden_profile, profile_ctx)
-    bench = benchmarks.get(golden_profile) or {}
-    tok_s = bench.get("tok_s")
-    if tok_s is None and v.get("tok_s_profile") == golden_profile:
+    note = v.get("note") or ""
+    golden_ctx = parse_golden_ctx_from_note(note)
+    is_golden_headline = (
+        golden_ctx is not None
+        and v.get("tok_s_profile") == golden_profile
+        and v.get("tok_s") is not None
+    )
+
+    ctx = golden_ctx if is_golden_headline else resolve_profile_ctx(golden_profile, profile_ctx)
+    if is_golden_headline:
         tok_s = v.get("tok_s")
+    else:
+        bench = benchmarks.get(golden_profile) or {}
+        tok_s = bench.get("tok_s")
+        if tok_s is None and v.get("tok_s_profile") == golden_profile:
+            tok_s = v.get("tok_s")
 
     m["max_ctx_profile"] = golden_profile
     m["max_ctx_ctx"] = ctx
@@ -353,6 +462,7 @@ def load_data():
 
     profile_ctx = load_profile_bench_context()
     benchmarks = load_inference_benchmarks()
+    bench_history = load_inference_benchmark_history()
 
     models = []
     for inv_path, v in verification.items():
@@ -386,10 +496,7 @@ def load_data():
             m["use_cases"] = sorted({str(t) for t in override})
         else:
             m["use_cases"] = derive_use_cases(m)
-        ctx = resolve_tok_s_ctx(v, profile_ctx)
-        m["tok_s_ctx"] = ctx
-        m["tok_s_ctx_label"] = format_ctx_label(ctx) if ctx else None
-        m["throughput"] = format_throughput(m["tok_s"], ctx)
+        attach_peak_bench(m, v, profile_ctx, benchmarks, bench_history)
         attach_max_ctx_bench(m, v, profile_ctx, benchmarks)
         models.append(m)
 

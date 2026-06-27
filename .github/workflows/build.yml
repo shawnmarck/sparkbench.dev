@@ -39,6 +39,8 @@ jobs:
           curl -fsSL "$BASE/golden-recipes.yaml"     -o data/golden-recipes.yaml
           curl -fsSL "$BASE/inference-benchmarks.yaml" -o data/inference-benchmarks.yaml.new \
             && mv data/inference-benchmarks.yaml.new data/inference-benchmarks.yaml || true
+          curl -fsSL "$BASE/inference-benchmark-history.yaml" -o data/inference-benchmark-history.yaml.new \
+            && mv data/inference-benchmark-history.yaml.new data/inference-benchmark-history.yaml || true
           curl -fsSL "$BASE/profile-bench-context.yaml" -o data/profile-bench-context.yaml.new \
             && mv data/profile-bench-context.yaml.new data/profile-bench-context.yaml || true
           curl -fsSL "$BASE/use-cases.yaml" -o data/use-cases.yaml.new \
