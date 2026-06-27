@@ -55,6 +55,7 @@ def _clean_note(note):
 _NAME_TOKEN_RE = re.compile(r"[a-z0-9]+")
 _PROFILE_CTX_SUFFIX_RE = re.compile(r"(?:^|-)(\d+)(k|m)(?:-|$)", re.I)
 _GOLDEN_NOTE_CTX_RE = re.compile(r"golden\s+(\d+)([kKmM])/", re.I)
+_GOLDEN_NOTE_KV_RE = re.compile(r"golden\s+\d+[kKmM]/(\S+)", re.I)
 _RECIPE_NAME_PREFIX_RE = re.compile(r"^OpenCode\s*[·\.]\s*", re.I)
 
 
@@ -429,6 +430,215 @@ def attach_max_ctx_bench(m: dict, v: dict, profile_ctx: dict, benchmarks: dict) 
     m["max_ctx_pending"] = not m["max_ctx_has_bench"] and ctx is not None
 
 
+def infer_bench_ctx_from_recipe(recipe: dict | None) -> int | None:
+    """Runtime -c from recipe args (preferred over context.default max-fit)."""
+    if not recipe:
+        return None
+    for key in ("llamacpp_args", "ds4_args", "eugr_args"):
+        args = recipe.get(key) or []
+        if not isinstance(args, list):
+            continue
+        for i, arg in enumerate(args):
+            if str(arg) in ("-c", "--ctx-size") and i + 1 < len(args):
+                try:
+                    return int(str(args[i + 1]).replace("_", ""))
+                except ValueError:
+                    pass
+    default = (recipe.get("context") or {}).get("default")
+    return int(default) if default else None
+
+
+def load_recipes() -> tuple[dict[str, dict], dict[str, dict]]:
+    """Golden recipe YAMLs keyed by profile id and inventory path."""
+    recipes_dir = os.path.join(DATA_DIR, "recipes")
+    by_id: dict[str, dict] = {}
+    by_inv: dict[str, dict] = {}
+    if not os.path.isdir(recipes_dir):
+        return by_id, by_inv
+    for fname in os.listdir(recipes_dir):
+        if not fname.endswith((".yaml", ".yml")):
+            continue
+        path = os.path.join(recipes_dir, fname)
+        with open(path) as f:
+            doc = yaml.safe_load(f) or {}
+        rid = doc.get("id")
+        inv = doc.get("inventory_path")
+        if rid:
+            by_id[str(rid)] = doc
+        if inv:
+            by_inv[str(inv)] = doc
+    return by_id, by_inv
+
+
+def _recipe_ladder_cell(cell: dict, *, golden: bool = False) -> dict | None:
+    if not isinstance(cell, dict):
+        return None
+    if cell.get("status") == "load_fail":
+        return None
+    tok_s = cell.get("tok_s")
+    ctx = cell.get("ctx") or cell.get("loaded_ctx")
+    if tok_s is None or ctx is None:
+        return None
+    kv = str(cell.get("kv") or "").strip()
+    return {
+        "ctx": int(ctx),
+        "ctx_label": format_ctx_label(int(ctx)),
+        "kv": kv,
+        "tok_s": round(float(tok_s), 1),
+        "golden": golden,
+        "peak": False,
+        "method": str(cell.get("method") or "").strip(),
+    }
+
+
+def extract_recipe_ladder(recipe: dict) -> list[dict]:
+    """Pull every benched ctx/kv/tok_s cell from a golden recipe."""
+    raw: list[dict] = []
+    bm = recipe.get("bench_matrix") or {}
+
+    golden = _recipe_ladder_cell(bm.get("golden_cell") or {}, golden=True)
+    if golden:
+        raw.append(golden)
+
+    ctx_ladder = bm.get("ctx_ladder")
+    if isinstance(ctx_ladder, dict):
+        for rung in ctx_ladder.get("rungs") or []:
+            row = _recipe_ladder_cell(rung)
+            if row:
+                raw.append(row)
+    elif isinstance(ctx_ladder, list):
+        for rung in ctx_ladder:
+            row = _recipe_ladder_cell(rung)
+            if row:
+                raw.append(row)
+
+    ctx_block = recipe.get("context") or {}
+    nested = ctx_block.get("ctx_ladder")
+    if isinstance(nested, dict):
+        for rung in nested.get("rungs") or []:
+            row = _recipe_ladder_cell(rung)
+            if row:
+                raw.append(row)
+
+    for cell in bm.get("kv_sweep") or []:
+        row = _recipe_ladder_cell(cell)
+        if row:
+            raw.append(row)
+
+    kv_doc = recipe.get("kv_sweep") or {}
+    for cell in kv_doc.get("results") or []:
+        row = _recipe_ladder_cell(cell)
+        if row:
+            raw.append(row)
+
+    merged: dict[tuple[int, str], dict] = {}
+    for row in raw:
+        key = (row["ctx"], row["kv"])
+        prev = merged.get(key)
+        if prev is None or row["golden"] or (not prev["golden"] and row["tok_s"] > prev["tok_s"]):
+            merged[key] = row
+
+    ladder = sorted(merged.values(), key=lambda r: r["ctx"])
+    if ladder:
+        best = max(ladder, key=lambda r: r["tok_s"])
+        for row in ladder:
+            row["peak"] = row["tok_s"] == best["tok_s"]
+    return ladder
+
+
+def _merge_ladder_row(ladder: list[dict], row: dict) -> None:
+    if not row.get("kv"):
+        for i, existing in enumerate(ladder):
+            if existing["ctx"] != row["ctx"]:
+                continue
+            merged = {**existing, **row, "kv": existing["kv"] or row["kv"]}
+            if row.get("golden"):
+                merged["golden"] = True
+            ladder[i] = merged
+            return
+
+    key = (row["ctx"], row["kv"])
+    for i, existing in enumerate(ladder):
+        if (existing["ctx"], existing["kv"]) != key:
+            continue
+        if row.get("golden"):
+            ladder[i] = {**existing, **row, "golden": True}
+        elif row["tok_s"] > existing["tok_s"]:
+            ladder[i] = {**existing, **row}
+        return
+    ladder.append(row)
+
+
+def attach_bench_ladder(
+    m: dict,
+    v: dict,
+    recipe: dict | None,
+    profile_ctx: dict[str, dict],
+    benchmarks: dict[str, dict],
+) -> None:
+    """Context ladder rows for model detail pages."""
+    profile = m.get("golden_profile") or v.get("tok_s_profile")
+    ladder = extract_recipe_ladder(recipe) if recipe else []
+
+    if profile:
+        ctx = resolve_profile_ctx(profile, profile_ctx)
+        if ctx is None:
+            ctx = infer_bench_ctx_from_recipe(recipe)
+        bench = benchmarks.get(profile) or {}
+        if bench.get("tok_s") is not None and ctx is not None:
+            _merge_ladder_row(ladder, {
+                "ctx": ctx,
+                "ctx_label": format_ctx_label(ctx),
+                "kv": "",
+                "tok_s": round(float(bench["tok_s"]), 1),
+                "golden": False,
+                "peak": False,
+                "method": str(bench.get("method") or "").strip(),
+            })
+
+    note = v.get("note") or ""
+    golden_ctx = parse_golden_ctx_from_note(note)
+    if golden_ctx is not None and v.get("tok_s") is not None and v.get("tok_s_profile") == profile:
+        kv_match = _GOLDEN_NOTE_KV_RE.search(note)
+        _merge_ladder_row(ladder, {
+            "ctx": golden_ctx,
+            "ctx_label": format_ctx_label(golden_ctx),
+            "kv": kv_match.group(1) if kv_match else "",
+            "tok_s": round(float(v["tok_s"]), 1),
+            "golden": True,
+            "peak": False,
+            "method": "bench-agent-v2",
+        })
+
+    ladder.sort(key=lambda r: r["ctx"])
+    if m.get("tok_s") and m.get("tok_s_ctx"):
+        _merge_ladder_row(ladder, {
+            "ctx": int(m["tok_s_ctx"]),
+            "ctx_label": m["tok_s_ctx_label"] or format_ctx_label(int(m["tok_s_ctx"])),
+            "kv": "",
+            "tok_s": round(float(m["tok_s"]), 1),
+            "golden": False,
+            "peak": False,
+            "method": "",
+        })
+    if m.get("max_ctx_tok_s") and m.get("max_ctx_ctx"):
+        _merge_ladder_row(ladder, {
+            "ctx": int(m["max_ctx_ctx"]),
+            "ctx_label": m["max_ctx_ctx_label"] or format_ctx_label(int(m["max_ctx_ctx"])),
+            "kv": "",
+            "tok_s": round(float(m["max_ctx_tok_s"]), 1),
+            "golden": True,
+            "peak": False,
+            "method": "",
+        })
+    ladder.sort(key=lambda r: r["ctx"])
+    if ladder:
+        best = max(ladder, key=lambda r: r["tok_s"])
+        for row in ladder:
+            row["peak"] = row["tok_s"] == best["tok_s"]
+    m["bench_ladder"] = ladder
+
+
 def load_data():
     with open(f"{DATA_DIR}/model-verification.yaml") as f:
         verification = yaml.safe_load(f)["models"]
@@ -472,6 +682,7 @@ def load_data():
     profile_ctx = load_profile_bench_context()
     benchmarks = load_inference_benchmarks()
     bench_history = load_inference_benchmark_history()
+    recipes_by_id, recipes_by_inv = load_recipes()
 
     models = []
     for inv_path, v in verification.items():
@@ -507,6 +718,8 @@ def load_data():
             m["use_cases"] = derive_use_cases(m)
         attach_peak_bench(m, v, profile_ctx, benchmarks, bench_history)
         attach_max_ctx_bench(m, v, profile_ctx, benchmarks)
+        recipe = recipes_by_id.get(m.get("golden_profile") or "") or recipes_by_inv.get(inv_path)
+        attach_bench_ladder(m, v, recipe, profile_ctx, benchmarks)
         models.append(m)
 
     models.sort(key=lambda m: m["tok_s"] or 0, reverse=True)

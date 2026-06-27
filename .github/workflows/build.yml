@@ -45,6 +45,12 @@ jobs:
             && mv data/profile-bench-context.yaml.new data/profile-bench-context.yaml || true
           curl -fsSL "$BASE/use-cases.yaml" -o data/use-cases.yaml.new \
             && mv data/use-cases.yaml.new data/use-cases.yaml || true
+          mkdir -p data/recipes
+          curl -fsSL "https://api.github.com/repos/shawnmarck/sparkbench/contents/recipes?ref=main" \
+            | python3 -c "import json,sys; [print(i['name']) for i in json.load(sys.stdin) if i['name'].endswith(('.yaml','.yml'))]" \
+            | while read -r f; do
+                curl -fsSL "$BASE/../recipes/$f" -o "data/recipes/$f"
+              done
 
       - name: Build site
         run: python build.py

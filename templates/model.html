@@ -47,6 +47,35 @@
     {% endif %}
   </div>
 
+  {% if model.bench_ladder %}
+  <div class="detail-section">
+    <h3>Context ladder</h3>
+    <p class="detail-ladder-intro">Throughput at each benched context window{% if model.bench_ladder|length == 1 %} (single measurement){% endif %}.</p>
+    <table class="ladder-table">
+      <thead>
+        <tr>
+          <th>Context</th>
+          <th>KV</th>
+          <th>Throughput</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in model.bench_ladder %}
+        <tr{% if row.golden or row.peak %} class="{% if row.golden %}ladder-golden{% endif %}{% if row.peak %}{% if row.golden %} {% endif %}ladder-peak{% endif %}"{% endif %}>
+          <td>
+            @ {{ row.ctx_label }}
+            {% if row.peak %}<span class="ladder-tag">peak</span>{% endif %}
+            {% if row.golden %}<span class="ladder-tag">golden</span>{% endif %}
+          </td>
+          <td class="mono">{% if row.kv %}{{ row.kv }}{% else %}—{% endif %}</td>
+          <td>{{ row.tok_s }}<span class="unit">t/s</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   {% if model.golden_profile %}
   <div class="detail-section">
     <h3>Golden profile</h3>

@@ -850,6 +850,61 @@ main {
   color: var(--text-mid);
 }
 
+.detail-ladder-intro {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: -4px 0 12px;
+}
+
+.ladder-table {
+  width: 100%;
+  max-width: 420px;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-feature-settings: "tnum";
+}
+
+.ladder-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 0 12px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ladder-table tbody td {
+  padding: 10px 12px 10px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-mid);
+  vertical-align: middle;
+}
+
+.ladder-table tbody tr:last-child td { border-bottom: none; }
+
+.ladder-table .unit {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: 2px;
+}
+
+.ladder-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.ladder-golden .ladder-tag:last-child,
+.ladder-peak .ladder-tag:first-child {
+  color: var(--accent);
+}
+
 .detail-links {
   list-style: none;
 }
