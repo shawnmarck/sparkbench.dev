@@ -33,6 +33,15 @@
       <div class="num">1</div>
       <div class="label">GB10 box</div>
     </div>
+    {% if stats.editors_pick %}
+    <div class="hero-stat hero-stat-editors-pick">
+      <a class="hero-editors-pick" href="/models/{{ stats.editors_pick.id.replace('/', '_') }}/">
+        <span class="hero-editors-pick-kicker">Editor's pick</span>
+        <span class="hero-editors-pick-name">{{ stats.editors_pick.name }}</span>
+        <span class="hero-editors-pick-meta">{{ stats.editors_pick.throughput }}</span>
+      </a>
+    </div>
+    {% endif %}
   </div>
 </section>
 
@@ -42,12 +51,22 @@
 <section class="section section-block" id="leaderboard">
   <div class="section-head">
     <h2>Leaderboard</h2>
-    <div class="meta">Sorted by throughput · context window shown per row · {{ stats.count }} models</div>
+    <div class="meta" id="lb-meta">Sorted by throughput · context window shown per row · {{ stats.count }} models</div>
+  </div>
+
+  <div class="lb-notice" id="lb-notice">
+    <strong id="lb-notice-title">Rankings are by throughput (tok/s) on a single GB10</strong>
+    <span id="lb-notice-body"> — not by intelligence, coding quality, or SWE benchmarks.
+    We can't wait to add those. <a href="{{ tool_repo }}" target="_blank" rel="noopener">Contributions welcome ↗</a></span>
   </div>
 
   <div class="lb-controls">
     <div class="lb-search">
       <input type="search" id="search" placeholder="Search models, labs, capabilities…" autocomplete="off">
+    </div>
+    <div class="lb-view-toggle" role="group" aria-label="Leaderboard ranking mode">
+      <button type="button" class="lb-view active" data-view="peak" aria-pressed="true">Peak speed</button>
+      <button type="button" class="lb-view" data-view="max-ctx" aria-pressed="false">Max context</button>
     </div>
     <div class="lb-filters">
       <button class="lb-filter active" data-engine="">All engines</button>
@@ -73,10 +92,22 @@
       {% for m in models %}
       <tr data-engine="{{ m.engine }}"
           data-toks="{{ m.tok_s or 0 }}"
+          data-max-toks="{{ m.max_ctx_tok_s or 0 }}"
+          data-peak-pct="{{ m.tok_s_pct }}"
+          data-max-pct="{{ m.max_ctx_tok_s_pct }}"
+          data-peak-ctx="{{ m.tok_s_ctx_label or '' }}"
+          data-max-ctx="{{ m.max_ctx_ctx_label or '' }}"
+          data-has-max-bench="{{ 1 if m.max_ctx_has_bench else 0 }}"
+          data-max-pending="{{ 1 if m.max_ctx_pending else 0 }}"
           data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.use_cases|join(' ')))|lower }}">
         <td class="lb-rank">{{ "%02d"|format(loop.index) }}</td>
         <td class="lb-name">
-          <a href="/models/{{ m.id.replace('/', '_') }}/">{{ m.name }}</a>
+          <a href="/models/{{ m.id.replace('/', '_') }}/" class="lb-name-link">
+            {% if m.editors_pick %}
+            <svg class="editors-pick-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"><title>Editor's pick</title><path d="M13 2L4 14H11L10 22L20 9H12L13 2Z" fill="currentColor"/></svg>
+            {% endif %}
+            {{ m.name }}
+          </a>
           <span class="lab">{{ m.id }}</span>
         </td>
         <td class="lb-tags">
@@ -86,8 +117,8 @@
         <td class="lb-params">{% if m.param_b %}{{ m.param_b }}B{% else %}—{% endif %}</td>
         <td class="lb-toks">
           <div class="lb-toks-cell">
-            <div class="lb-bar"><div class="lb-bar-fill" style="width: {{ m.tok_s_pct }}%"></div></div>
-            <div class="lb-toks-value">{% if m.tok_s %}{{ m.tok_s }}<span class="unit">t/s</span>{% if m.tok_s_ctx_label %}<span class="unit ctx-at">@ {{ m.tok_s_ctx_label }}</span>{% endif %}{% else %}—{% endif %}</div>
+            <div class="lb-bar"><div class="lb-bar-fill" data-bar></div></div>
+            <div class="lb-toks-value" data-toks-display>{% if m.tok_s %}{{ m.tok_s }}<span class="unit">t/s</span>{% if m.tok_s_ctx_label %}<span class="unit ctx-at">@ {{ m.tok_s_ctx_label }}</span>{% endif %}{% else %}—{% endif %}</div>
           </div>
         </td>
         <td class="lb-link">
@@ -177,10 +208,57 @@ spark inference bench</pre>
   const rows = Array.from(document.querySelectorAll('#leaderboard-table tbody tr'));
   const search = document.getElementById('search');
   const filters = document.querySelectorAll('.lb-filter');
+  const viewBtns = document.querySelectorAll('.lb-view');
+  const lbMeta = document.getElementById('lb-meta');
+  const lbNoticeTitle = document.getElementById('lb-notice-title');
+  const maxCtxBenchCount = {{ stats.max_ctx_bench_count }};
+  const maxCtxGoldenCount = {{ stats.max_ctx_golden_count }};
   let engine = '';
   let q = '';
+  let view = 'peak';
   let sortCol = 'tok_s';
   let sortDir = -1;
+
+  const META = {
+    peak: 'Sorted by peak throughput · context window shown per row · {{ stats.count }} models',
+    'max-ctx': `Sorted by throughput at golden max-fit context · ${maxCtxBenchCount}/${maxCtxGoldenCount} golden recipes benched`,
+  };
+  const NOTICE = {
+    peak: 'Rankings are by throughput (tok/s) on a single GB10',
+    'max-ctx': 'Max context view — each model at its golden max-fit recipe (lower tok/s, longer context)',
+  };
+
+  function activeToks(row) {
+    return parseFloat(view === 'max-ctx' ? row.dataset.maxToks : row.dataset.toks) || 0;
+  }
+
+  function renderThroughput(row) {
+    const bar = row.querySelector('[data-bar]');
+    const cell = row.querySelector('[data-toks-display]');
+    const isMax = view === 'max-ctx';
+    const pct = isMax ? row.dataset.maxPct : row.dataset.peakPct;
+    const ctx = isMax ? row.dataset.maxCtx : row.dataset.peakCtx;
+    const toks = isMax ? row.dataset.maxToks : row.dataset.toks;
+    const pending = isMax && row.dataset.maxPending === '1';
+    const hasVal = isMax ? row.dataset.hasMaxBench === '1' : parseFloat(toks) > 0;
+
+    bar.style.width = `${pct}%`;
+
+    if (!hasVal) {
+      cell.innerHTML = pending
+        ? `—<span class="unit ctx-at lb-pending" title="Golden max-fit recipe — bench pending">@ ${ctx}</span>`
+        : '—';
+      cell.classList.toggle('is-pending', pending);
+      return;
+    }
+    cell.classList.remove('is-pending');
+    const ctxHtml = ctx ? `<span class="unit ctx-at">@ ${ctx}</span>` : '';
+    cell.innerHTML = `${toks}<span class="unit">t/s</span>${ctxHtml}`;
+  }
+
+  function renderAllThroughput() {
+    rows.forEach(renderThroughput);
+  }
 
   function apply() {
     const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
@@ -193,6 +271,25 @@ spark inference bench</pre>
       if (show) r.querySelector('.lb-rank').textContent = String(rank++).padStart(2, '0');
     });
   }
+
+  function sortRows() {
+    const tbody = document.querySelector('#leaderboard-table tbody');
+    const sorted = rows.slice().sort((a, b) => (activeToks(a) - activeToks(b)) * sortDir);
+    sorted.forEach(r => tbody.appendChild(r));
+    apply();
+  }
+
+  viewBtns.forEach(b => b.addEventListener('click', () => {
+    view = b.dataset.view;
+    viewBtns.forEach(x => {
+      x.classList.toggle('active', x === b);
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+    lbMeta.textContent = META[view] || META.peak;
+    lbNoticeTitle.textContent = NOTICE[view] || NOTICE.peak;
+    renderAllThroughput();
+    sortRows();
+  }));
 
   filters.forEach(b => b.addEventListener('click', () => {
     filters.forEach(x => x.classList.remove('active'));
@@ -216,15 +313,13 @@ spark inference bench</pre>
       });
       th.classList.add('sort-active');
       if (sortDir === 1) th.classList.add('asc');
-      const tbody = document.querySelector('#leaderboard-table tbody');
-      const sorted = rows.slice().sort((a, b) => {
-        const av = parseFloat(a.dataset[col] || a.dataset.toks);
-        const bv = parseFloat(b.dataset[col] || b.dataset.toks);
-        return (av - bv) * sortDir;
-      });
-      sorted.forEach(r => tbody.appendChild(r));
-      apply();
+      sortRows();
     });
+  });
+
+  rows.forEach(r => {
+    const bar = r.querySelector('[data-bar]');
+    if (bar) bar.style.width = `${r.dataset.peakPct}%`;
   });
 })();
 </script>

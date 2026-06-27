@@ -15,6 +15,7 @@ OUT_DIR = os.environ.get("OUT_DIR", "site")
 SITE_URL = os.environ.get("SITE_URL", "https://sparkbench.dev").rstrip("/")
 TOOL_REPO = "https://github.com/shawnmarck/sparkbench"
 HF_BASE = "https://huggingface.co"
+EDITORS_PICK_ID = "qwen/qwen3.6-27b"
 
 
 CAPABILITY_LABELS = {
@@ -74,6 +75,23 @@ def load_profile_bench_context() -> dict[str, dict]:
     return raw if isinstance(raw, dict) else {}
 
 
+def load_inference_benchmarks() -> dict[str, dict]:
+    path = f"{DATA_DIR}/inference-benchmarks.yaml"
+    if not os.path.isfile(path):
+        return {}
+    with open(path) as f:
+        data = yaml.safe_load(f) or {}
+    raw = data.get("profiles") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def resolve_profile_ctx(profile_id: str, profile_ctx: dict[str, dict]) -> int | None:
+    entry = profile_ctx.get(profile_id) if profile_id else None
+    if isinstance(entry, dict) and entry.get("ctx"):
+        return int(entry["ctx"])
+    return parse_ctx_from_profile_id(profile_id)
+
+
 def resolve_tok_s_ctx(v: dict, profile_ctx: dict[str, dict]) -> int | None:
     """Context window used for the tok/s measurement."""
     if v.get("tok_s_ctx"):
@@ -123,6 +141,31 @@ def derive_use_cases(model):
     return sorted(tags)
 
 
+def attach_max_ctx_bench(m: dict, v: dict, profile_ctx: dict, benchmarks: dict) -> None:
+    """Golden max-fit profile throughput — may differ from the headline tok/s."""
+    golden_profile = m.get("golden_profile")
+    if not golden_profile:
+        m["max_ctx_tok_s"] = m.get("tok_s")
+        m["max_ctx_ctx"] = m.get("tok_s_ctx")
+        m["max_ctx_ctx_label"] = m.get("tok_s_ctx_label")
+        m["max_ctx_has_bench"] = bool(m.get("tok_s"))
+        m["max_ctx_pending"] = False
+        return
+
+    ctx = resolve_profile_ctx(golden_profile, profile_ctx)
+    bench = benchmarks.get(golden_profile) or {}
+    tok_s = bench.get("tok_s")
+    if tok_s is None and v.get("tok_s_profile") == golden_profile:
+        tok_s = v.get("tok_s")
+
+    m["max_ctx_profile"] = golden_profile
+    m["max_ctx_ctx"] = ctx
+    m["max_ctx_ctx_label"] = format_ctx_label(ctx) if ctx else None
+    m["max_ctx_tok_s"] = tok_s
+    m["max_ctx_has_bench"] = tok_s is not None
+    m["max_ctx_pending"] = not m["max_ctx_has_bench"] and ctx is not None
+
+
 def load_data():
     with open(f"{DATA_DIR}/model-verification.yaml") as f:
         verification = yaml.safe_load(f)["models"]
@@ -163,6 +206,7 @@ def load_data():
         return {}
 
     profile_ctx = load_profile_bench_context()
+    benchmarks = load_inference_benchmarks()
 
     models = []
     for inv_path, v in verification.items():
@@ -197,6 +241,7 @@ def load_data():
         m["tok_s_ctx"] = ctx
         m["tok_s_ctx_label"] = format_ctx_label(ctx) if ctx else None
         m["throughput"] = format_throughput(m["tok_s"], ctx)
+        attach_max_ctx_bench(m, v, profile_ctx, benchmarks)
         models.append(m)
 
     models.sort(key=lambda m: m["tok_s"] or 0, reverse=True)
@@ -207,12 +252,18 @@ def compute_stats(models):
     tok_values = [m["tok_s"] for m in models if m["tok_s"]]
     engines = sorted({m["engine"] for m in models if m["engine"]})
     peak_model = max(models, key=lambda m: m["tok_s"] or 0) if models else None
+    editors_pick = next((m for m in models if m["id"] == EDITORS_PICK_ID), None)
+    golden_models = [m for m in models if m.get("golden_profile")]
+    max_ctx_benched = [m for m in golden_models if m.get("max_ctx_has_bench")]
     return {
         "count": len(models),
         "peak_tok_s": max(tok_values) if tok_values else 0,
         "peak_throughput": peak_model["throughput"] if peak_model and peak_model.get("tok_s") else None,
         "median_tok_s": sorted(tok_values)[len(tok_values) // 2] if tok_values else 0,
         "engines": engines,
+        "editors_pick": editors_pick,
+        "max_ctx_golden_count": len(golden_models),
+        "max_ctx_bench_count": len(max_ctx_benched),
     }
 
 
@@ -223,7 +274,13 @@ def group_by_use_case(models):
         for uc in m["use_cases"]:
             groups.setdefault(uc, []).append(m)
     order = ["Code", "Agents", "Reasoning", "Multimodal", "General"]
-    return [(uc, groups[uc][:6]) for uc in order if uc in groups]
+    out = []
+    for uc in order:
+        if uc not in groups:
+            continue
+        items = sorted(groups[uc], key=lambda m: m["tok_s"] or 0, reverse=True)
+        out.append((uc, items[:6]))
+    return out
 
 
 def check_hf_link(url, timeout=8):
@@ -273,10 +330,13 @@ def build():
     use_case_groups = group_by_use_case(models)
     built_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Compute bar widths relative to peak
+    # Compute bar widths relative to peak (both ranking modes)
     peak = stats["peak_tok_s"] or 1
+    max_ctx_peak = max((m["max_ctx_tok_s"] or 0) for m in models) or 1
     for m in models:
         m["tok_s_pct"] = round((m["tok_s"] or 0) / peak * 100, 1)
+        m["max_ctx_tok_s_pct"] = round((m["max_ctx_tok_s"] or 0) / max_ctx_peak * 100, 1)
+        m["editors_pick"] = m["id"] == EDITORS_PICK_ID
 
     os.makedirs(OUT_DIR, exist_ok=True)
     shutil.copytree("public", f"{OUT_DIR}/public", dirs_exist_ok=True)
@@ -309,6 +369,7 @@ def build():
 
     print(f"Built {len(models)} models → {OUT_DIR}/")
     print(f"  peak: {stats['peak_tok_s']} tok/s, engines: {', '.join(stats['engines'])}")
+    print(f"  max-ctx golden: {stats['max_ctx_bench_count']}/{stats['max_ctx_golden_count']} benched")
 
 
 def write_sitemap(models):
