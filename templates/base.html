@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}SparkBench{% endblock %}</title>
+  <meta name="description" content="{% block description %}GB10 model leaderboard — benchmark results and what runs on DGX Spark.{% endblock %}">
+  <link rel="stylesheet" href="/public/style.css">
+  <link rel="icon" type="image/svg+xml" href="/public/favicon.svg">
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/" class="wordmark">SparkBench</a>
+      <div class="nav-links">
+        <a href="/">Leaderboard</a>
+        <a href="{{ tool_repo }}" target="_blank" rel="noopener">Tool ↗</a>
+      </div>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <p>Built from <a href="{{ tool_repo }}" target="_blank" rel="noopener">sparkbench</a> data &middot; {{ built_at }} &middot; Not affiliated with NVIDIA Corporation</p>
+  </footer>
+</body>
+</html>

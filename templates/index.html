@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}SparkBench — GB10 Model Leaderboard{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>GB10 Model Leaderboard</h1>
+  <p>{{ model_count }} models benchmarked on a single DGX Spark GB10. Sorted by throughput (tok/s).</p>
+</section>
+
+<section class="controls">
+  <input type="search" id="search" placeholder="Search models…" autocomplete="off">
+  <div class="filters">
+    <button class="filter active" data-engine="">All</button>
+    <button class="filter" data-engine="eugr">eugr (vLLM)</button>
+    <button class="filter" data-engine="llamacpp">llama.cpp</button>
+    <button class="filter" data-engine="ds4">ds4</button>
+  </div>
+</section>
+
+<table class="leaderboard" id="leaderboard">
+  <thead>
+    <tr>
+      <th class="col-rank">#</th>
+      <th class="col-model sortable" data-col="name">Model</th>
+      <th class="col-params sortable" data-col="param_b">Params</th>
+      <th class="col-engine sortable" data-col="engine">Engine</th>
+      <th class="col-toks sortable sort-desc" data-col="tok_s">tok/s ↓</th>
+      <th class="col-links">Links</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for m in models %}
+    <tr data-engine="{{ m.engine }}" data-name="{{ m.name|lower }} {{ m.id|lower }}">
+      <td class="col-rank">{{ loop.index }}</td>
+      <td class="col-model">
+        <a href="/models/{{ m.id.replace('/', '_') }}/">{{ m.name }}</a>
+        <span class="lab">{{ m.lab }}</span>
+      </td>
+      <td class="col-params">{% if m.param_b %}{{ m.param_b }}B{% else %}—{% endif %}</td>
+      <td class="col-engine"><span class="engine-tag engine-{{ m.engine }}">{{ m.engine }}</span></td>
+      <td class="col-toks">{% if m.tok_s %}<strong>{{ m.tok_s }}</strong>{% else %}—{% endif %}</td>
+      <td class="col-links"><a href="{{ m.hf_url }}" target="_blank" rel="noopener" title="HuggingFace">HF ↗</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+  const rows = Array.from(document.querySelectorAll('#leaderboard tbody tr'));
+  let activeEngine = '';
+  let searchVal = '';
+
+  function applyFilters() {
+    let rank = 1;
+    rows.forEach(r => {
+      const engineMatch = !activeEngine || r.dataset.engine === activeEngine;
+      const searchMatch = !searchVal || r.dataset.name.includes(searchVal);
+      const show = engineMatch && searchMatch;
+      r.hidden = !show;
+      if (show) r.querySelector('.col-rank').textContent = rank++;
+    });
+  }
+
+  document.querySelectorAll('.filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeEngine = btn.dataset.engine;
+      applyFilters();
+    });
+  });
+
+  document.getElementById('search').addEventListener('input', e => {
+    searchVal = e.target.value.toLowerCase().trim();
+    applyFilters();
+  });
+
+  // Column sort
+  let sortCol = 'tok_s', sortDir = -1;
+  const tbody = document.querySelector('#leaderboard tbody');
+  document.querySelectorAll('.sortable').forEach(th => {
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = -1; }
+      document.querySelectorAll('.sortable').forEach(h => h.classList.remove('sort-asc','sort-desc'));
+      th.classList.add(sortDir === -1 ? 'sort-desc' : 'sort-asc');
+      const sorted = rows.slice().sort((a, b) => {
+        const av = a.cells[['','name','param_b','engine','tok_s'].indexOf(col)]?.textContent.trim() || '';
+        const bv = b.cells[['','name','param_b','engine','tok_s'].indexOf(col)]?.textContent.trim() || '';
+        const an = parseFloat(av), bn = parseFloat(bv);
+        if (!isNaN(an) && !isNaN(bn)) return (an - bn) * sortDir;
+        return av.localeCompare(bv) * sortDir;
+      });
+      sorted.forEach(r => tbody.appendChild(r));
+      applyFilters();
+    });
+  });
+</script>
+{% endblock %}
