@@ -16,7 +16,7 @@ OUT_DIR = os.environ.get("OUT_DIR", "site")
 SITE_URL = os.environ.get("SITE_URL", "https://sparkbench.dev").rstrip("/")
 TOOL_REPO = "https://github.com/shawnmarck/sparkbench"
 HF_BASE = "https://huggingface.co"
-EDITORS_PICK_ID = "qwen/qwen3.6-27b"
+EDITORS_PICK_ID = "nvidia/qwen3.6-35b-a3b"
 
 PRODUCT_ENGINES = ["eugr", "llamacpp", "ds4"]
 
