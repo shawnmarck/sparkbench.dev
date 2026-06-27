@@ -109,7 +109,7 @@
           data-has-max-bench="{{ 1 if m.max_ctx_has_bench else 0 }}"
           data-max-pending="{{ 1 if m.max_ctx_pending else 0 }}"
           data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.use_cases|join(' ')))|lower }}">
-        <td class="lb-rank">{{ "%02d"|format(loop.index) }}</td>
+        <td class="lb-rank"><span class="lb-rank-num">{{ "%02d"|format(loop.index) }}</span><span class="lb-rank-delta" data-rank-delta hidden aria-hidden="true"></span></td>
         <td class="lb-name">
           <a href="{{ root }}models/{{ m.id.replace('/', '_') }}/" class="lb-name-link">
             {% if m.editors_pick %}
@@ -278,15 +278,50 @@ spark inference bench</pre>
     rows.forEach(renderThroughput);
   }
 
+  function computeGlobalRanks() {
+    const byPeak = rows.slice().sort((a, b) =>
+      (parseFloat(b.dataset.toks) || 0) - (parseFloat(a.dataset.toks) || 0));
+    const byMax = rows.slice().sort((a, b) =>
+      (parseFloat(b.dataset.maxToks) || 0) - (parseFloat(a.dataset.maxToks) || 0));
+    byPeak.forEach((r, i) => { r.dataset.peakRank = String(i + 1); });
+    byMax.forEach((r, i) => { r.dataset.maxRank = String(i + 1); });
+  }
+
+  function renderRankDelta(row) {
+    const deltaEl = row.querySelector('[data-rank-delta]');
+    if (!deltaEl) return;
+    if (view !== 'max-ctx' || row.hidden) {
+      deltaEl.textContent = '';
+      deltaEl.hidden = true;
+      deltaEl.className = 'lb-rank-delta';
+      return;
+    }
+    const peakRank = parseInt(row.dataset.peakRank, 10);
+    const maxRank = parseInt(row.dataset.maxRank, 10);
+    const delta = peakRank - maxRank;
+    if (!delta) {
+      deltaEl.textContent = '';
+      deltaEl.hidden = true;
+      deltaEl.className = 'lb-rank-delta';
+      return;
+    }
+    deltaEl.hidden = false;
+    deltaEl.textContent = delta > 0 ? `+${delta}` : String(delta);
+    deltaEl.className = `lb-rank-delta ${delta > 0 ? 'up' : 'down'}`;
+  }
+
   function apply() {
     const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
-    let rank = 1;
     rows.forEach(r => {
       const okE = !engine || r.dataset.engine === engine;
       const okQ = !tokens.length || tokens.every(t => r.dataset.name.includes(t));
       const show = okE && okQ;
       r.hidden = !show;
-      if (show) r.querySelector('.lb-rank').textContent = String(rank++).padStart(2, '0');
+      const numEl = r.querySelector('.lb-rank-num');
+      if (show && numEl) {
+        numEl.textContent = String(parseInt(r.dataset.peakRank, 10)).padStart(2, '0');
+      }
+      renderRankDelta(r);
     });
   }
 
@@ -335,6 +370,7 @@ spark inference bench</pre>
     });
   });
 
+  computeGlobalRanks();
   rows.forEach(r => {
     const bar = r.querySelector('[data-bar]');
     if (bar) bar.style.width = `${r.dataset.peakPct}%`;

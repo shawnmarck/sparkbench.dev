@@ -473,11 +473,22 @@ main {
 }
 
 .lb-rank {
-  width: 38px;
+  width: 58px;
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 12px;
+  white-space: nowrap;
 }
+
+.lb-rank-delta {
+  margin-left: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.lb-rank-delta.up { color: var(--green); }
+.lb-rank-delta.down { color: var(--red); }
 
 .lb-name { min-width: 240px; }
 .lb-name a,
