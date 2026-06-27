@@ -2,6 +2,7 @@
 
 {% block title %}{{ model.name }} · {{ model.tok_s }} tok/s on Spark — SparkBench{% endblock %}
 {% block description %}{{ model.name }} runs at {{ model.tok_s }} tok/s on a single DGX Spark GB10 via {{ model.engine }}.{% endblock %}
+{% block canonical_path %}/models/{{ model.id.replace('/', '_') }}/{% endblock %}
 
 {% block content %}
 <section class="section tight">
@@ -26,14 +27,16 @@
       <div class="lab">Engine</div>
       <div class="val" style="font-size: 18px;">{{ model.engine or "—" }}</div>
     </div>
-    <div class="stat-cell">
-      <div class="lab">Status</div>
-      <div class="val" style="font-size: 18px; color: var(--green);">✓ verified</div>
-    </div>
     {% if model.param_b %}
     <div class="stat-cell">
       <div class="lab">Parameters</div>
       <div class="val">{{ model.param_b }}<span class="unit">B</span></div>
+    </div>
+    {% endif %}
+    {% if model.updated_at %}
+    <div class="stat-cell">
+      <div class="lab">Verified</div>
+      <div class="val" style="font-size: 18px;">{{ model.updated_at[:10] }}</div>
     </div>
     {% endif %}
   </div>

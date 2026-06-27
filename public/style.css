@@ -470,6 +470,15 @@ main {
   color: var(--text-dim);
   font-feature-settings: "tnum";
 }
+.uc-card li .uc-recipe {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  letter-spacing: 0.03em;
+}
+.uc-card li .uc-recipe:hover { color: var(--accent); }
 
 /* ─── "Run it" / install section ─── */
 .run-section {

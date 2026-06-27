@@ -10,6 +10,7 @@ from jinja2 import Environment, FileSystemLoader
 
 DATA_DIR = os.environ.get("DATA_DIR", "data")
 OUT_DIR = os.environ.get("OUT_DIR", "site")
+SITE_URL = os.environ.get("SITE_URL", "https://sparkbench.dev").rstrip("/")
 TOOL_REPO = "https://github.com/shawnmarck/sparkbench"
 HF_BASE = "https://huggingface.co"
 
@@ -35,21 +36,32 @@ def _clean_note(note):
     return note.strip()
 
 
+_NAME_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
 def derive_use_cases(model):
-    """Infer use-case tags from name + capabilities."""
+    """Infer use-case tags from name + capabilities.
+
+    Match on tokenized words and the explicit capability list, never on raw
+    substrings — otherwise "vllm" matches "vl" and tags every vLLM model
+    as Multimodal.
+    """
     name = (model.get("name") or "").lower()
     inv = (model.get("id") or "").lower()
-    caps = [c.lower() for c in model.get("capabilities", [])]
-    tags = set()
-    haystack = f"{name} {inv} {' '.join(caps)}"
+    caps = {c.lower() for c in model.get("capabilities", [])}
+    tokens = set(_NAME_TOKEN_RE.findall(f"{name} {inv}"))
 
-    if "coder" in haystack or "coding" in haystack or "opus-coder" in haystack:
+    def has(*needles):
+        return any(n in tokens or n in caps for n in needles)
+
+    tags = set()
+    if has("coder", "coding", "code"):
         tags.add("Code")
-    if "agentic" in haystack or "agent" in haystack or "tool" in haystack:
+    if has("agentic", "agent", "tool-calling"):
         tags.add("Agents")
-    if "reasoning" in haystack or "thinking" in haystack or "r1" in haystack or "o1" in haystack or "opus" in haystack:
+    if has("reasoning", "thinking", "r1", "o1"):
         tags.add("Reasoning")
-    if "vision" in haystack or "multimodal" in haystack or "vl" in haystack:
+    if has("vision", "multimodal", "vl", "vlm"):
         tags.add("Multimodal")
     if not tags:
         tags.add("General")
@@ -140,6 +152,7 @@ def build():
         "use_case_groups": use_case_groups,
         "built_at": built_at,
         "tool_repo": TOOL_REPO,
+        "site_url": SITE_URL,
     }
 
     index_tpl = env.get_template("index.html")
@@ -154,8 +167,33 @@ def build():
             sub_ctx = {k: v for k, v in ctx.items() if k != "models"}
             f.write(detail_tpl.render(model=m, **sub_ctx))
 
+    write_sitemap(models)
+    write_robots()
+
     print(f"Built {len(models)} models → {OUT_DIR}/")
     print(f"  peak: {stats['peak_tok_s']} tok/s, engines: {', '.join(stats['engines'])}")
+
+
+def write_sitemap(models):
+    """Emit a sitemap.xml so model detail URLs are discoverable."""
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+             f"  <url><loc>{SITE_URL}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>"]
+    for m in models:
+        slug = m["id"].replace("/", "_")
+        lines.append(
+            f"  <url><loc>{SITE_URL}/models/{slug}/</loc>"
+            f"<changefreq>weekly</changefreq><priority>0.7</priority></url>"
+        )
+    lines.append("</urlset>")
+    with open(f"{OUT_DIR}/sitemap.xml", "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def write_robots():
+    body = f"User-agent: *\nAllow: /\nSitemap: {SITE_URL}/sitemap.xml\n"
+    with open(f"{OUT_DIR}/robots.txt", "w") as f:
+        f.write(body)
 
 
 if __name__ == "__main__":
