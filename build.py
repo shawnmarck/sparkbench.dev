@@ -194,6 +194,7 @@ def load_data():
 
     catalog = {m["id"]: m for m in catalog_raw}
     golden = golden_raw.get("golden", {})
+    leaderboard_exclude = set(golden_raw.get("leaderboard_exclude") or [])
 
     # Fallback index: for verification keys that don't match a catalog id
     # exactly (e.g. inventory `nvidia/qwen3.6-35b-a3b` vs catalog
@@ -222,6 +223,8 @@ def load_data():
 
     models = []
     for inv_path, v in verification.items():
+        if inv_path in leaderboard_exclude or v.get("leaderboard_excluded"):
+            continue
         if v.get("spark_status") != "works":
             continue
         cat = resolve_catalog(inv_path)
