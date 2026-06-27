@@ -546,9 +546,18 @@ main {
 /* ─── Use case grid ─── */
 .uc-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 18px;
 }
+.uc-card--multimodal {
+  grid-column: 1 / -1;
+}
+.uc-card--multimodal ul {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0 24px;
+}
+.uc-card--multimodal li { border-top: none; }
 .uc-card {
   background: var(--bg-elev);
   border: 1px solid var(--border-soft);
@@ -808,6 +817,8 @@ footer {
   .lb-toks { width: 130px; }
   .lb-bar { display: none; }
   .lb-name { min-width: 0; }
+  .uc-grid { grid-template-columns: repeat(2, 1fr); }
+  .uc-card--multimodal ul { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 560px) {
   .nav-links a:not(.ghbtn) { display: none; }
@@ -815,4 +826,6 @@ footer {
   .lb-search { flex: 1; }
   .lb-engine { display: none; }
   .lb-link { display: none; }
+  .uc-grid { grid-template-columns: 1fr; }
+  .uc-card--multimodal ul { grid-template-columns: 1fr; }
 }

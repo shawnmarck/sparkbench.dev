@@ -142,7 +142,7 @@
 
   <div class="uc-grid">
     {% for use_case, items in use_case_groups %}
-    <div class="uc-card">
+    <div class="uc-card{% if use_case == 'Multimodal' %} uc-card--multimodal{% endif %}">
       <h3>{{ use_case }}</h3>
       <ul>
         {% for m in items %}

@@ -281,7 +281,7 @@ def group_by_use_case(models):
     for m in models:
         for uc in m["use_cases"]:
             groups.setdefault(uc, []).append(m)
-    order = ["Code", "Agents", "Reasoning", "Multimodal", "General"]
+    order = ["General", "Agents", "Reasoning", "Code", "Multimodal"]
     out = []
     for uc in order:
         if uc not in groups:
