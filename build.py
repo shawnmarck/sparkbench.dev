@@ -55,6 +55,15 @@ def _clean_note(note):
 _NAME_TOKEN_RE = re.compile(r"[a-z0-9]+")
 _PROFILE_CTX_SUFFIX_RE = re.compile(r"(?:^|-)(\d+)(k|m)(?:-|$)", re.I)
 _GOLDEN_NOTE_CTX_RE = re.compile(r"golden\s+(\d+)([kKmM])/", re.I)
+_RECIPE_NAME_PREFIX_RE = re.compile(r"^OpenCode\s*[·\.]\s*", re.I)
+
+
+def public_model_name(name: str, inv_path: str) -> str:
+    """Drop internal recipe branding from catalog names shown on the site."""
+    cleaned = name or ""
+    if inv_path == EDITORS_PICK_ID:
+        cleaned = _RECIPE_NAME_PREFIX_RE.sub("", cleaned).strip()
+    return cleaned
 
 
 def format_ctx_label(ctx: int) -> str:
@@ -475,7 +484,7 @@ def load_data():
         hf_repo = cat.get("hf_repo") or inv_path
         m = {
             "id": inv_path,
-            "name": cat.get("name") or slug,
+            "name": public_model_name(cat.get("name") or slug, inv_path),
             "lab": cat.get("lab") or lab,
             "slug": slug,
             "hf_url": f"{HF_BASE}/{hf_repo}",
