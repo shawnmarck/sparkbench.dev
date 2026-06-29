@@ -365,6 +365,11 @@ main {
 }
 .lb-notice strong { color: var(--text); }
 .lb-notice a { color: var(--accent); }
+.lb-notice-method {
+  margin-top: -8px;
+  border-left-color: var(--border);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
 
 .lb-controls {
   display: flex; gap: 20px; align-items: center;
@@ -850,6 +855,14 @@ main {
   color: var(--text-mid);
 }
 
+.detail-bench-method {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  max-width: 72ch;
+  margin: -20px 0 36px;
+}
+
 .detail-ladder-intro {
   font-size: 13px;
   color: var(--text-dim);
@@ -912,7 +925,7 @@ main {
 
 .runs-table {
   width: 100%;
-  min-width: 520px;
+  min-width: 640px;
   border-collapse: collapse;
   font-size: 13px;
   font-feature-settings: "tnum";
@@ -957,6 +970,13 @@ main {
 .runs-table .mono {
   font-family: var(--font-mono);
   font-size: 12px;
+}
+
+.runs-profile {
+  font-size: 11px;
+  max-width: 140px;
+  word-break: break-all;
+  line-height: 1.35;
 }
 
 .runs-latest .ladder-tag {

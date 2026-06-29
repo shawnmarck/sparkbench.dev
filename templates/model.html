@@ -47,6 +47,10 @@
     {% endif %}
   </div>
 
+  <p class="detail-bench-method">
+    Throughput uses bench v2: we prefill to ~{{ stats.bench_fill_pct }}% of the max context window, then measure decode under a simulated agent workload — not a few-token micro-benchmark.
+  </p>
+
   {% if model.bench_ladder %}
   <div class="detail-section">
     <h3>Context ladder</h3>
@@ -85,6 +89,7 @@
         <thead>
           <tr>
             <th>Date</th>
+            <th>Profile</th>
             <th>Method</th>
             <th>Avg</th>
             <th>Session t/s</th>
@@ -97,6 +102,7 @@
           {% for run in model.bench_runs %}
           <tr{% if run.latest %} class="runs-latest"{% endif %}>
             <td class="mono">{{ run.date or "—" }}{% if run.latest %}<span class="ladder-tag">latest</span>{% endif %}</td>
+            <td class="mono runs-profile">{{ run.profile or "—" }}</td>
             <td class="mono">{{ run.method or "—" }}{% if run.bench_version %}<span class="runs-ver">v{{ run.bench_version }}</span>{% endif %}</td>
             <td>{% if run.tok_s %}{{ run.tok_s }}<span class="unit">t/s</span>{% else %}—{% endif %}</td>
             <td class="mono">{% if run.run_tok_s %}{{ run.run_tok_s|join(" · ") }}{% elif run.session_label %}{{ run.session_label }}{% else %}—{% endif %}</td>
@@ -106,7 +112,7 @@
           </tr>
           {% if run.note %}
           <tr class="runs-note-row">
-            <td colspan="7" class="runs-note mono">{{ run.note }}</td>
+            <td colspan="8" class="runs-note mono">{{ run.note }}</td>
           </tr>
           {% endif %}
           {% endfor %}

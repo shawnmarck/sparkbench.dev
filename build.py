@@ -17,6 +17,8 @@ SITE_URL = os.environ.get("SITE_URL", "https://sparkbench.dev").rstrip("/")
 TOOL_REPO = "https://github.com/shawnmarck/sparkbench"
 HF_BASE = "https://huggingface.co"
 EDITORS_PICK_ID = "nvidia/qwen3.6-35b-a3b"
+EDITORS_PICK_PROFILE = "qwen36-35b-a3b-mtp-eugr"
+BENCH_FILL_RATIO = 0.75
 
 PRODUCT_ENGINES = ["eugr", "llamacpp", "ds4"]
 
@@ -347,15 +349,32 @@ def iter_profile_bench_points(
     return points
 
 
+def collect_model_profiles(
+    m: dict,
+    v: dict,
+    profiles_by_inv: dict[str, list[str]],
+) -> list[str]:
+    """Inference profile ids tied to this inventory path (golden + companions)."""
+    profiles: list[str] = []
+    for p in (m.get("golden_profile"), v.get("tok_s_profile")):
+        if p and p not in profiles:
+            profiles.append(p)
+    for p in profiles_by_inv.get(m["id"], []):
+        if p and p not in profiles:
+            profiles.append(p)
+    return profiles
+
+
 def attach_peak_bench(
     m: dict,
     v: dict,
     profile_ctx: dict[str, dict],
     benchmarks: dict[str, dict],
     history: dict[str, dict],
+    profiles_by_inv: dict[str, list[str]],
 ) -> None:
     """Fastest tok/s across benchmark history for this model's profile(s)."""
-    profiles = {p for p in (m.get("golden_profile"), v.get("tok_s_profile")) if p}
+    profiles = collect_model_profiles(m, v, profiles_by_inv)
     if not profiles:
         ctx = resolve_tok_s_ctx(v, profile_ctx)
         m["tok_s_ctx"] = ctx
@@ -372,6 +391,7 @@ def attach_peak_bench(
 
     best_tok_s: float | None = None
     best_ctx: int | None = None
+    best_profile: str | None = None
     for profile_id in profiles:
         v_tok = v.get("tok_s") if ver_profile == profile_id else None
         v_ctx = ver_ctx if ver_profile == profile_id else None
@@ -386,12 +406,15 @@ def attach_peak_bench(
             if best_tok_s is None or tok_s > best_tok_s:
                 best_tok_s = tok_s
                 best_ctx = ctx
+                best_profile = profile_id
 
     if best_tok_s is not None:
         m["tok_s"] = best_tok_s
         m["tok_s_ctx"] = best_ctx
         m["tok_s_ctx_label"] = format_ctx_label(best_ctx) if best_ctx else None
         m["throughput"] = format_throughput(best_tok_s, best_ctx)
+        if best_profile:
+            m["peak_profile"] = best_profile
 
 
 def attach_max_ctx_bench(m: dict, v: dict, profile_ctx: dict, benchmarks: dict) -> None:
@@ -448,26 +471,49 @@ def infer_bench_ctx_from_recipe(recipe: dict | None) -> int | None:
     return int(default) if default else None
 
 
-def load_recipes() -> tuple[dict[str, dict], dict[str, dict]]:
-    """Golden recipe YAMLs keyed by profile id and inventory path."""
+def _ingest_recipe_doc(
+    doc: dict,
+    *,
+    by_id: dict[str, dict],
+    by_inv: dict[str, dict],
+    profiles_by_inv: dict[str, list[str]],
+) -> None:
+    rid = doc.get("id")
+    inv = doc.get("inventory_path")
+    if rid:
+        by_id[str(rid)] = doc
+    if inv:
+        inv = str(inv)
+        by_inv[inv] = doc
+        if rid:
+            profiles_by_inv.setdefault(inv, [])
+            if str(rid) not in profiles_by_inv[inv]:
+                profiles_by_inv[inv].append(str(rid))
+
+
+def load_recipes() -> tuple[dict[str, dict], dict[str, dict], dict[str, list[str]]]:
+    """Recipe YAMLs keyed by profile id, inventory path, and all profiles per inventory."""
     recipes_dir = os.path.join(DATA_DIR, "recipes")
     by_id: dict[str, dict] = {}
     by_inv: dict[str, dict] = {}
+    profiles_by_inv: dict[str, list[str]] = {}
     if not os.path.isdir(recipes_dir):
-        return by_id, by_inv
-    for fname in os.listdir(recipes_dir):
-        if not fname.endswith((".yaml", ".yml")):
-            continue
-        path = os.path.join(recipes_dir, fname)
-        with open(path) as f:
-            doc = yaml.safe_load(f) or {}
-        rid = doc.get("id")
-        inv = doc.get("inventory_path")
-        if rid:
-            by_id[str(rid)] = doc
-        if inv:
-            by_inv[str(inv)] = doc
-    return by_id, by_inv
+        return by_id, by_inv, profiles_by_inv
+
+    def scan_dir(directory: str) -> None:
+        if not os.path.isdir(directory):
+            return
+        for fname in os.listdir(directory):
+            if not fname.endswith((".yaml", ".yml")):
+                continue
+            path = os.path.join(directory, fname)
+            with open(path) as f:
+                doc = yaml.safe_load(f) or {}
+            _ingest_recipe_doc(doc, by_id=by_id, by_inv=by_inv, profiles_by_inv=profiles_by_inv)
+
+    scan_dir(recipes_dir)
+    scan_dir(os.path.join(recipes_dir, "drafts"))
+    return by_id, by_inv, profiles_by_inv
 
 
 def _recipe_ladder_cell(cell: dict, *, golden: bool = False) -> dict | None:
@@ -697,12 +743,10 @@ def attach_bench_runs(
     profile_ctx: dict[str, dict],
     benchmarks: dict[str, dict],
     history: dict[str, dict],
+    profiles_by_inv: dict[str, list[str]],
 ) -> None:
     """All recorded inference benchmark runs for this model's profile(s)."""
-    profiles: list[str] = []
-    for p in (m.get("golden_profile"), v.get("tok_s_profile")):
-        if p and p not in profiles:
-            profiles.append(p)
+    profiles = collect_model_profiles(m, v, profiles_by_inv)
     if not profiles:
         m["bench_runs"] = []
         return
@@ -742,6 +786,32 @@ def attach_bench_runs(
 
     runs.sort(key=lambda r: r.get("measured_at") or "", reverse=True)
     m["bench_runs"] = runs
+
+
+def apply_editors_pick_headline(
+    m: dict,
+    recipes_by_id: dict[str, dict],
+    benchmarks: dict[str, dict],
+    profile_ctx: dict[str, dict],
+) -> None:
+    """Editor's pick highlights the MTP companion profile when benched."""
+    if m["id"] != EDITORS_PICK_ID:
+        return
+    recipe = recipes_by_id.get(EDITORS_PICK_PROFILE) or {}
+    bench = benchmarks.get(EDITORS_PICK_PROFILE) or {}
+    name = (recipe.get("name") or "").strip()
+    if name:
+        m["name"] = _RECIPE_NAME_PREFIX_RE.sub("", name).strip() or name
+    if bench.get("tok_s") is None:
+        return
+    ctx = resolve_profile_ctx(EDITORS_PICK_PROFILE, profile_ctx)
+    if ctx is None:
+        ctx = infer_bench_ctx_from_recipe(recipe)
+    m["tok_s"] = round(float(bench["tok_s"]), 1)
+    m["tok_s_ctx"] = ctx
+    m["tok_s_ctx_label"] = format_ctx_label(ctx) if ctx else None
+    m["throughput"] = format_throughput(m["tok_s"], ctx)
+    m["peak_profile"] = EDITORS_PICK_PROFILE
 
 
 def load_data():
@@ -787,7 +857,7 @@ def load_data():
     profile_ctx = load_profile_bench_context()
     benchmarks = load_inference_benchmarks()
     bench_history = load_inference_benchmark_history()
-    recipes_by_id, recipes_by_inv = load_recipes()
+    recipes_by_id, recipes_by_inv, profiles_by_inv = load_recipes()
 
     models = []
     for inv_path, v in verification.items():
@@ -821,11 +891,12 @@ def load_data():
             m["use_cases"] = sorted({str(t) for t in override})
         else:
             m["use_cases"] = derive_use_cases(m)
-        attach_peak_bench(m, v, profile_ctx, benchmarks, bench_history)
+        attach_peak_bench(m, v, profile_ctx, benchmarks, bench_history, profiles_by_inv)
         attach_max_ctx_bench(m, v, profile_ctx, benchmarks)
         recipe = recipes_by_id.get(m.get("golden_profile") or "") or recipes_by_inv.get(inv_path)
         attach_bench_ladder(m, v, recipe, profile_ctx, benchmarks)
-        attach_bench_runs(m, v, profile_ctx, benchmarks, bench_history)
+        attach_bench_runs(m, v, profile_ctx, benchmarks, bench_history, profiles_by_inv)
+        apply_editors_pick_headline(m, recipes_by_id, benchmarks, profile_ctx)
         models.append(m)
 
     models.sort(key=lambda m: m["tok_s"] or 0, reverse=True)
@@ -849,6 +920,8 @@ def compute_stats(models):
         "editors_pick": editors_pick,
         "max_ctx_golden_count": len(golden_models),
         "max_ctx_bench_count": len(max_ctx_benched),
+        "bench_fill_ratio": BENCH_FILL_RATIO,
+        "bench_fill_pct": int(BENCH_FILL_RATIO * 100),
     }
 
 

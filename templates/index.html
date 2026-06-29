@@ -69,6 +69,13 @@
     We can't wait to add those. <a href="{{ tool_repo }}" target="_blank" rel="noopener">Contributions welcome ↗</a></span>
   </div>
 
+  <div class="lb-notice lb-notice-method">
+    <strong>Measured at {{ stats.bench_fill_pct }}% context fill</strong>
+    <span> — before we time decode, the bench loads about {{ stats.bench_fill_pct }}% of the model's max window with real tokens
+    (a 35k window → ~26k in flight; 256k → ~192k). Bench v2 simulates an agent workload: heavy prefill, multi-turn decode, tool round-trips.
+    Many published numbers only generate a handful of tokens and report much higher tok/s.</span>
+  </div>
+
   <div class="lb-controls">
     <div class="lb-search">
       <input type="search" id="search" placeholder="Search models, labs, capabilities…" autocomplete="off">
@@ -242,7 +249,7 @@ spark inference bench</pre>
     'max-ctx': `Sorted by throughput at highest working context · ${maxCtxBenchCount}/${maxCtxGoldenCount} golden recipes benched`,
   };
   const NOTICE = {
-    peak: 'Peak speed — best tok/s from any recorded run (usually at a smaller context)',
+    peak: 'Peak speed — best tok/s from any recorded run (bench v2 fills ~{{ stats.bench_fill_pct }}% of max context before timing)',
     'max-ctx': 'Max context — highest working golden context and tok/s at that window',
   };
 
