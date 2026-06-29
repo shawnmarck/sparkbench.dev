@@ -639,6 +639,111 @@ def attach_bench_ladder(
     m["bench_ladder"] = ladder
 
 
+def _round_tok_s(val) -> float | None:
+    if val is None:
+        return None
+    return round(float(val), 1)
+
+
+def _normalize_bench_run(raw: dict, *, profile: str, ctx_label: str | None) -> dict:
+    """One inference-benchmark run row for model detail pages."""
+    run_id = str(raw.get("id") or raw.get("latest_run_id") or "").strip()
+    measured_at = str(raw.get("measured_at") or "").strip()
+    run_tok_s = [_round_tok_s(x) for x in (raw.get("run_tok_s") or []) if x is not None]
+    tok_s = _round_tok_s(raw.get("tok_s"))
+    tok_s_min = _round_tok_s(raw.get("tok_s_min"))
+    tok_s_max = _round_tok_s(raw.get("tok_s_max"))
+    if tok_s_min is None and run_tok_s:
+        tok_s_min = min(run_tok_s)
+    if tok_s_max is None and run_tok_s:
+        tok_s_max = max(run_tok_s)
+    sessions = raw.get("sessions")
+    turns = raw.get("turns_per_session")
+    session_label = None
+    if sessions and turns:
+        session_label = f"{sessions}×{turns}"
+    elif sessions:
+        session_label = str(sessions)
+    fill = raw.get("context_fill_target_tokens")
+    note = _clean_note(str(raw.get("note") or raw.get("system_note") or ""))
+    tool_ok = raw.get("tool_roundtrip_ok")
+    return {
+        "id": run_id,
+        "profile": profile,
+        "ctx_label": ctx_label,
+        "measured_at": measured_at,
+        "date": measured_at[:10] if measured_at else "",
+        "method": str(raw.get("method") or "").strip(),
+        "engine": str(raw.get("engine") or "").strip(),
+        "tok_s": tok_s,
+        "tok_s_min": tok_s_min,
+        "tok_s_max": tok_s_max,
+        "run_tok_s": run_tok_s,
+        "session_label": session_label,
+        "completion_tokens": raw.get("completion_tokens"),
+        "prompt_tokens": raw.get("prompt_tokens"),
+        "elapsed_s": raw.get("elapsed_s"),
+        "context_fill": int(fill) if fill is not None else None,
+        "tool_ok": tool_ok,
+        "bench_version": str(raw.get("bench_standard_version") or "").strip(),
+        "note": note,
+        "latest": False,
+    }
+
+
+def attach_bench_runs(
+    m: dict,
+    v: dict,
+    profile_ctx: dict[str, dict],
+    benchmarks: dict[str, dict],
+    history: dict[str, dict],
+) -> None:
+    """All recorded inference benchmark runs for this model's profile(s)."""
+    profiles: list[str] = []
+    for p in (m.get("golden_profile"), v.get("tok_s_profile")):
+        if p and p not in profiles:
+            profiles.append(p)
+    if not profiles:
+        m["bench_runs"] = []
+        return
+
+    runs: list[dict] = []
+    seen_ids: set[str] = set()
+
+    for profile in profiles:
+        ctx = resolve_profile_ctx(profile, profile_ctx)
+        ctx_label = format_ctx_label(ctx) if ctx else None
+
+        hist = history.get(profile) or {}
+        for run in hist.get("runs") or []:
+            norm = _normalize_bench_run(run, profile=profile, ctx_label=ctx_label)
+            rid = norm["id"]
+            if rid:
+                if rid in seen_ids:
+                    continue
+                seen_ids.add(rid)
+            runs.append(norm)
+
+        latest = benchmarks.get(profile) or {}
+        if latest.get("tok_s") is None:
+            continue
+        rid = str(latest.get("latest_run_id") or "").strip()
+        if rid and rid in seen_ids:
+            continue
+        norm = _normalize_bench_run(
+            {**latest, "id": rid},
+            profile=profile,
+            ctx_label=ctx_label,
+        )
+        norm["latest"] = True
+        runs.append(norm)
+        if rid:
+            seen_ids.add(rid)
+
+    runs.sort(key=lambda r: r.get("measured_at") or "", reverse=True)
+    m["bench_runs"] = runs
+
+
 def load_data():
     with open(f"{DATA_DIR}/model-verification.yaml") as f:
         verification = yaml.safe_load(f)["models"]
@@ -720,6 +825,7 @@ def load_data():
         attach_max_ctx_bench(m, v, profile_ctx, benchmarks)
         recipe = recipes_by_id.get(m.get("golden_profile") or "") or recipes_by_inv.get(inv_path)
         attach_bench_ladder(m, v, recipe, profile_ctx, benchmarks)
+        attach_bench_runs(m, v, profile_ctx, benchmarks, bench_history)
         models.append(m)
 
     models.sort(key=lambda m: m["tok_s"] or 0, reverse=True)

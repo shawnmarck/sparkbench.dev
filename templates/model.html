@@ -76,6 +76,46 @@
   </div>
   {% endif %}
 
+  {% if model.bench_runs %}
+  <div class="detail-section">
+    <h3>Benchmark runs</h3>
+    <p class="detail-ladder-intro">Recorded inference benchmark sessions for this model's profile{% if model.bench_runs|length == 1 %} (single run){% endif %}.</p>
+    <div class="runs-table-wrap">
+      <table class="runs-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Method</th>
+            <th>Avg</th>
+            <th>Session t/s</th>
+            <th>Range</th>
+            <th>Fill</th>
+            <th>Tool</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in model.bench_runs %}
+          <tr{% if run.latest %} class="runs-latest"{% endif %}>
+            <td class="mono">{{ run.date or "—" }}{% if run.latest %}<span class="ladder-tag">latest</span>{% endif %}</td>
+            <td class="mono">{{ run.method or "—" }}{% if run.bench_version %}<span class="runs-ver">v{{ run.bench_version }}</span>{% endif %}</td>
+            <td>{% if run.tok_s %}{{ run.tok_s }}<span class="unit">t/s</span>{% else %}—{% endif %}</td>
+            <td class="mono">{% if run.run_tok_s %}{{ run.run_tok_s|join(" · ") }}{% elif run.session_label %}{{ run.session_label }}{% else %}—{% endif %}</td>
+            <td class="mono">{% if run.tok_s_min is not none and run.tok_s_max is not none and run.tok_s_min != run.tok_s_max %}{{ run.tok_s_min }}–{{ run.tok_s_max }}{% else %}—{% endif %}</td>
+            <td class="mono">{% if run.context_fill %}~{{ "{:,}".format(run.context_fill) }}{% elif run.ctx_label %}@ {{ run.ctx_label }}{% else %}—{% endif %}</td>
+            <td>{% if run.tool_ok is sameas true %}<span class="runs-ok">ok</span>{% elif run.tool_ok is sameas false %}<span class="runs-fail">fail</span>{% else %}—{% endif %}</td>
+          </tr>
+          {% if run.note %}
+          <tr class="runs-note-row">
+            <td colspan="7" class="runs-note mono">{{ run.note }}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   {% if model.golden_profile %}
   <div class="detail-section">
     <h3>Golden profile</h3>
