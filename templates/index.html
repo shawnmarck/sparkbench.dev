@@ -60,7 +60,7 @@
 <section class="section section-block" id="leaderboard">
   <div class="section-head">
     <h2>Leaderboard</h2>
-    <div class="meta" id="lb-meta">Sorted by throughput · context window shown per row · {{ stats.count }} models</div>
+    <div class="meta" id="lb-meta">Sorted by throughput · context window shown per row · {{ stats.count }} models{% if stats.data_updated_at %} · Data updated {{ stats.data_updated_at }}{% endif %}</div>
   </div>
 
   <div class="lb-notice" id="lb-notice">
@@ -244,9 +244,10 @@ spark inference bench</pre>
   let sortCol = 'tok_s';
   let sortDir = -1;
 
+  const dataUpdated = {{ stats.data_updated_at|tojson }};
   const META = {
-    peak: 'Sorted by fastest benchmark run · context window shown per row · {{ stats.count }} models',
-    'max-ctx': `Sorted by throughput at highest working context · ${maxCtxBenchCount}/${maxCtxGoldenCount} golden recipes benched`,
+    peak: 'Sorted by fastest benchmark run · context window shown per row · {{ stats.count }} models' + (dataUpdated ? ' · Data updated ' + dataUpdated : ''),
+    'max-ctx': `Sorted by throughput at highest working context · ${maxCtxBenchCount}/${maxCtxGoldenCount} golden recipes benched` + (dataUpdated ? ' · Data updated ' + dataUpdated : ''),
   };
   const NOTICE = {
     peak: 'Peak speed — best tok/s from any recorded run (bench v2 fills ~{{ stats.bench_fill_pct }}% of max context before timing)',

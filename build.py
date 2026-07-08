@@ -910,6 +910,10 @@ def compute_stats(models):
     editors_pick = next((m for m in models if m["id"] == EDITORS_PICK_ID), None)
     golden_models = [m for m in models if m.get("golden_profile")]
     max_ctx_benched = [m for m in golden_models if m.get("max_ctx_has_bench")]
+    data_updated_at = ""
+    stamps = [str(m.get("updated_at") or "")[:10] for m in models if m.get("updated_at")]
+    if stamps:
+        data_updated_at = max(stamps)
     return {
         "count": len(models),
         "peak_tok_s": max(tok_values) if tok_values else 0,
@@ -922,6 +926,7 @@ def compute_stats(models):
         "max_ctx_bench_count": len(max_ctx_benched),
         "bench_fill_ratio": BENCH_FILL_RATIO,
         "bench_fill_pct": int(BENCH_FILL_RATIO * 100),
+        "data_updated_at": data_updated_at,
     }
 
 
