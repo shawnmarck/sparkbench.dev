@@ -398,6 +398,20 @@ main {
   background: var(--text);
   color: var(--bg);
 }
+.lb-curve {
+  width: 64px;
+  text-align: center;
+  vertical-align: middle;
+}
+.lb-curve .pbm-spark {
+  display: inline-block;
+  vertical-align: middle;
+  opacity: 0.95;
+}
+.lb-curve .rail-empty {
+  color: var(--text-faint);
+  font-size: 12px;
+}
 .lb-toks-value.is-pending,
 .lb-toks-value .lb-pending {
   color: var(--text-faint);
@@ -863,6 +877,74 @@ main {
   margin: -20px 0 36px;
 }
 
+.pbm-chart-wrap {
+  max-width: 480px;
+  margin: 8px 0 8px;
+  padding: 12px 8px 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--text) 2.5%, var(--bg));
+}
+.pbm-chart {
+  display: block;
+  overflow: visible;
+}
+.pbm-grid {
+  stroke: var(--border-soft);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+.pbm-axis-line {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.pbm-axis {
+  fill: var(--text-dim);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.pbm-y-caption {
+  fill: var(--text-faint);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.pbm-area {
+  fill: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.pbm-line {
+  stroke: var(--accent);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pbm-dot {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.pbm-point-label {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+}
+.pbm-fill-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  font-size: 14px;
+  color: var(--text-mid);
+}
+.pbm-fill-list .unit {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-left: 2px;
+}
+
 .detail-ladder-intro {
   font-size: 13px;
   color: var(--text-dim);
@@ -1078,6 +1160,7 @@ footer {
   .run-section { grid-template-columns: 1fr; gap: 32px; }
   .lb-table { font-size: 13px; }
   .lb-params, .lb-tags { display: none; }
+  .lb-curve { display: none; }
   .lb-toks { width: 130px; }
   .lb-bar { display: none; }
   .lb-name { min-width: 0; }

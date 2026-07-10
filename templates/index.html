@@ -33,7 +33,7 @@
     </div>
     <div class="hero-stat">
       <div class="num throughput-display">{% if stats.peak_throughput %}{{ stats.peak_throughput }}{% else %}—{% endif %}</div>
-      <div class="label">Peak throughput</div>
+      <div class="label">Top @ 4k fill</div>
     </div>
     <div class="hero-stat">
       <div class="num">{{ stats.engines|length }}</div>
@@ -60,7 +60,7 @@
 <section class="section section-block" id="leaderboard">
   <div class="section-head">
     <h2>Leaderboard</h2>
-    <div class="meta" id="lb-meta">Sorted by throughput · context window shown per row · {{ stats.count }} models{% if stats.data_updated_at %} · Data updated {{ stats.data_updated_at }}{% endif %}</div>
+    <div class="meta" id="lb-meta">Sorted by PBM @ 4k · {{ stats.count }} models{% if stats.data_updated_at %} · Data updated {{ stats.data_updated_at }}{% endif %}</div>
   </div>
 
   <div class="lb-notice" id="lb-notice">
@@ -69,20 +69,20 @@
     We can't wait to add those. <a href="{{ tool_repo }}" target="_blank" rel="noopener">Contributions welcome ↗</a></span>
   </div>
 
-  <div class="lb-notice lb-notice-method">
-    <strong>Measured at {{ stats.bench_fill_pct }}% context fill</strong>
-    <span> — before we time decode, the bench loads about {{ stats.bench_fill_pct }}% of the model's max window with real tokens
-    (a 35k window → ~26k in flight; 256k → ~192k). Bench v2 simulates an agent workload: heavy prefill, multi-turn decode, tool round-trips.
-    Many published numbers only generate a handful of tokens and report much higher tok/s.</span>
+  <div class="lb-notice lb-notice-method" id="lb-method">
+    <strong id="lb-method-title">Measured at 4k context fill (PBM)</strong>
+    <span id="lb-method-body"> — decode tok/s after prefilling a fixed token context (perfbench-metrics).
+    Same agent-style workload as bench v2, but comparable across models at 4k / 50k / 100k fills.</span>
   </div>
 
   <div class="lb-controls">
     <div class="lb-search">
       <input type="search" id="search" placeholder="Search models, labs, capabilities…" autocomplete="off">
     </div>
-    <div class="lb-view-toggle" role="group" aria-label="Leaderboard ranking mode">
-      <button type="button" class="lb-view active" data-view="peak" aria-pressed="true">Peak speed</button>
-      <button type="button" class="lb-view" data-view="max-ctx" aria-pressed="false">Max context</button>
+    <div class="lb-view-toggle" role="group" aria-label="Context fill for ranking">
+      <button type="button" class="lb-view active" data-fill="4k" aria-pressed="true">4k</button>
+      <button type="button" class="lb-view" data-fill="50k" aria-pressed="false">50k</button>
+      <button type="button" class="lb-view" data-fill="100k" aria-pressed="false">100k</button>
     </div>
     <div class="lb-filters">
       <button class="lb-filter active" data-engine="">All engines</button>
@@ -100,6 +100,7 @@
         <th class="lb-tags">For</th>
         <th class="lb-engine">Engine</th>
         <th class="lb-params">Params</th>
+        <th class="lb-curve">Curve</th>
         <th class="lb-toks sortable sort-active" data-col="tok_s">Throughput</th>
         <th class="lb-link"></th>
       </tr>
@@ -107,14 +108,15 @@
     <tbody>
       {% for m in models %}
       <tr data-engine="{{ m.engine }}"
-          data-toks="{{ m.tok_s or 0 }}"
-          data-max-toks="{{ m.max_ctx_tok_s or 0 }}"
-          data-peak-pct="{{ m.tok_s_pct }}"
-          data-max-pct="{{ m.max_ctx_tok_s_pct }}"
-          data-peak-ctx="{{ m.tok_s_ctx_label or '' }}"
-          data-max-ctx="{{ m.max_ctx_ctx_label or '' }}"
-          data-has-max-bench="{{ 1 if m.max_ctx_has_bench else 0 }}"
-          data-max-pending="{{ 1 if m.max_ctx_pending else 0 }}"
+          data-toks-4k="{{ m.pbm_4k if m.pbm_4k is not none else '' }}"
+          data-toks-50k="{{ m.pbm_50k if m.pbm_50k is not none else '' }}"
+          data-toks-100k="{{ m.pbm_100k if m.pbm_100k is not none else '' }}"
+          data-pct-4k="{{ m.pbm_4k_pct }}"
+          data-pct-50k="{{ m.pbm_50k_pct }}"
+          data-pct-100k="{{ m.pbm_100k_pct }}"
+          data-has-4k="{{ 1 if m.pbm_4k is not none else 0 }}"
+          data-has-50k="{{ 1 if m.pbm_50k is not none else 0 }}"
+          data-has-100k="{{ 1 if m.pbm_100k is not none else 0 }}"
           data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.use_cases|join(' ')))|lower }}">
         <td class="lb-rank"><span class="lb-rank-num">{{ "%02d"|format(loop.index) }}</span><span class="lb-rank-delta" data-rank-delta hidden aria-hidden="true"></span></td>
         <td class="lb-name">
@@ -131,10 +133,13 @@
         </td>
         <td class="lb-engine"><span class="engine-{{ m.engine }}">{{ m.engine | engine_label }}</span></td>
         <td class="lb-params{% if m.is_moe %} lb-params-moe{% endif %}">{% if m.params_label %}{{ m.params_label }}{% else %}—{% endif %}</td>
+        <td class="lb-curve">
+          {% if m.pbm_spark_svg %}{{ m.pbm_spark_svg | safe }}{% else %}<span class="rail-empty">—</span>{% endif %}
+        </td>
         <td class="lb-toks">
           <div class="lb-toks-cell">
             <div class="lb-bar"><div class="lb-bar-fill" data-bar></div></div>
-            <div class="lb-toks-value" data-toks-display>{% if m.tok_s %}{{ m.tok_s }}<span class="unit">t/s</span>{% if m.tok_s_ctx_label %}<span class="unit ctx-at">@ {{ m.tok_s_ctx_label }}</span>{% endif %}{% else %}—{% endif %}</div>
+            <div class="lb-toks-value" data-toks-display>{% if m.pbm_4k is not none %}{{ m.pbm_4k }}<span class="unit">t/s</span><span class="unit ctx-at">@ 4k</span>{% else %}—{% endif %}</div>
           </div>
         </td>
         <td class="lb-link">
@@ -235,51 +240,46 @@ spark inference bench</pre>
   const filters = document.querySelectorAll('.lb-filter');
   const viewBtns = document.querySelectorAll('.lb-view');
   const lbMeta = document.getElementById('lb-meta');
-  const lbNoticeTitle = document.getElementById('lb-notice-title');
-  const maxCtxBenchCount = {{ stats.max_ctx_bench_count }};
-  const maxCtxGoldenCount = {{ stats.max_ctx_golden_count }};
+  const lbMethodTitle = document.getElementById('lb-method-title');
+  const dataUpdated = {{ stats.data_updated_at|tojson }};
+  const modelCount = {{ stats.count }};
   let engine = '';
   let q = '';
-  let view = 'peak';
+  let fill = '4k';
   let sortCol = 'tok_s';
   let sortDir = -1;
 
-  const dataUpdated = {{ stats.data_updated_at|tojson }};
-  const META = {
-    peak: 'Sorted by fastest benchmark run · context window shown per row · {{ stats.count }} models' + (dataUpdated ? ' · Data updated ' + dataUpdated : ''),
-    'max-ctx': `Sorted by throughput at highest working context · ${maxCtxBenchCount}/${maxCtxGoldenCount} golden recipes benched` + (dataUpdated ? ' · Data updated ' + dataUpdated : ''),
+  const FILL_META = {
+    '4k': 'Sorted by PBM @ 4k · ' + modelCount + ' models',
+    '50k': 'Sorted by PBM @ 50k · ' + modelCount + ' models',
+    '100k': 'Sorted by PBM @ 100k · ' + modelCount + ' models',
   };
-  const NOTICE = {
-    peak: 'Peak speed — best tok/s from any recorded run (bench v2 fills ~{{ stats.bench_fill_pct }}% of max context before timing)',
-    'max-ctx': 'Max context — highest working golden context and tok/s at that window',
+  const FILL_METHOD = {
+    '4k': 'Measured at 4k context fill (PBM)',
+    '50k': 'Measured at 50k context fill (PBM)',
+    '100k': 'Measured at 100k context fill (PBM)',
   };
 
   function activeToks(row) {
-    return parseFloat(view === 'max-ctx' ? row.dataset.maxToks : row.dataset.toks) || 0;
+    const raw = row.getAttribute('data-toks-' + fill);
+    return raw === '' || raw == null ? -1 : (parseFloat(raw) || 0);
+  }
+
+  function hasFill(row) {
+    return row.getAttribute('data-has-' + fill) === '1';
   }
 
   function renderThroughput(row) {
     const bar = row.querySelector('[data-bar]');
     const cell = row.querySelector('[data-toks-display]');
-    const isMax = view === 'max-ctx';
-    const pct = isMax ? row.dataset.maxPct : row.dataset.peakPct;
-    const ctx = isMax ? row.dataset.maxCtx : row.dataset.peakCtx;
-    const toks = isMax ? row.dataset.maxToks : row.dataset.toks;
-    const pending = isMax && row.dataset.maxPending === '1';
-    const hasVal = isMax ? row.dataset.hasMaxBench === '1' : parseFloat(toks) > 0;
-
+    const pct = row.getAttribute('data-pct-' + fill) || '0';
+    const toks = row.getAttribute('data-toks-' + fill);
     bar.style.width = `${pct}%`;
-
-    if (!hasVal) {
-      cell.innerHTML = pending
-        ? `—<span class="unit ctx-at lb-pending" title="Golden max-fit recipe — bench pending">@ ${ctx}</span>`
-        : '—';
-      cell.classList.toggle('is-pending', pending);
+    if (!hasFill(row)) {
+      cell.innerHTML = '—';
       return;
     }
-    cell.classList.remove('is-pending');
-    const ctxHtml = ctx ? `<span class="unit ctx-at">@ ${ctx}</span>` : '';
-    cell.innerHTML = `${toks}<span class="unit">t/s</span>${ctxHtml}`;
+    cell.innerHTML = `${toks}<span class="unit">t/s</span><span class="unit ctx-at">@ ${fill}</span>`;
   }
 
   function renderAllThroughput() {
@@ -287,26 +287,30 @@ spark inference bench</pre>
   }
 
   function computeGlobalRanks() {
-    const byPeak = rows.slice().sort((a, b) =>
-      (parseFloat(b.dataset.toks) || 0) - (parseFloat(a.dataset.toks) || 0));
-    const byMax = rows.slice().sort((a, b) =>
-      (parseFloat(b.dataset.maxToks) || 0) - (parseFloat(a.dataset.maxToks) || 0));
-    byPeak.forEach((r, i) => { r.dataset.peakRank = String(i + 1); });
-    byMax.forEach((r, i) => { r.dataset.maxRank = String(i + 1); });
+    ['4k', '50k', '100k'].forEach(f => {
+      const ranked = rows.slice().sort((a, b) => {
+        const av = a.getAttribute('data-toks-' + f);
+        const bv = b.getAttribute('data-toks-' + f);
+        const an = av === '' || av == null ? -1 : parseFloat(av) || 0;
+        const bn = bv === '' || bv == null ? -1 : parseFloat(bv) || 0;
+        return bn - an;
+      });
+      ranked.forEach((r, i) => { r.dataset['rank' + f] = String(i + 1); });
+    });
   }
 
   function renderRankDelta(row) {
     const deltaEl = row.querySelector('[data-rank-delta]');
     if (!deltaEl) return;
-    if (view !== 'max-ctx' || row.hidden) {
+    if (fill === '4k' || row.hidden) {
       deltaEl.textContent = '';
       deltaEl.hidden = true;
       deltaEl.className = 'lb-rank-delta';
       return;
     }
-    const peakRank = parseInt(row.dataset.peakRank, 10);
-    const maxRank = parseInt(row.dataset.maxRank, 10);
-    const delta = peakRank - maxRank;
+    const baseRank = parseInt(row.dataset.rank4k, 10);
+    const curRank = parseInt(row.dataset['rank' + fill], 10);
+    const delta = baseRank - curRank;
     if (!delta) {
       deltaEl.textContent = '';
       deltaEl.hidden = true;
@@ -320,6 +324,7 @@ spark inference bench</pre>
 
   function apply() {
     const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
+    let visible = 0;
     rows.forEach(r => {
       const okE = !engine || r.dataset.engine === engine;
       const okQ = !tokens.length || tokens.every(t => r.dataset.name.includes(t));
@@ -327,7 +332,9 @@ spark inference bench</pre>
       r.hidden = !show;
       const numEl = r.querySelector('.lb-rank-num');
       if (show && numEl) {
-        numEl.textContent = String(parseInt(r.dataset.peakRank, 10)).padStart(2, '0');
+        visible += 1;
+        const rankKey = 'rank' + fill;
+        numEl.textContent = String(parseInt(r.dataset[rankKey], 10)).padStart(2, '0');
       }
       renderRankDelta(r);
     });
@@ -340,17 +347,21 @@ spark inference bench</pre>
     apply();
   }
 
-  viewBtns.forEach(b => b.addEventListener('click', () => {
-    view = b.dataset.view;
+  function setFill(next) {
+    fill = next;
     viewBtns.forEach(x => {
-      x.classList.toggle('active', x === b);
-      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+      const on = x.dataset.fill === fill;
+      x.classList.toggle('active', on);
+      x.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    lbMeta.textContent = META[view] || META.peak;
-    lbNoticeTitle.textContent = NOTICE[view] || NOTICE.peak;
+    const suffix = dataUpdated ? ' · Data updated ' + dataUpdated : '';
+    lbMeta.textContent = (FILL_META[fill] || FILL_META['4k']) + suffix;
+    if (lbMethodTitle) lbMethodTitle.textContent = FILL_METHOD[fill] || FILL_METHOD['4k'];
     renderAllThroughput();
     sortRows();
-  }));
+  }
+
+  viewBtns.forEach(b => b.addEventListener('click', () => setFill(b.dataset.fill)));
 
   filters.forEach(b => b.addEventListener('click', () => {
     filters.forEach(x => x.classList.remove('active'));
@@ -379,10 +390,7 @@ spark inference bench</pre>
   });
 
   computeGlobalRanks();
-  rows.forEach(r => {
-    const bar = r.querySelector('[data-bar]');
-    if (bar) bar.style.width = `${r.dataset.peakPct}%`;
-  });
+  setFill('4k');
 })();
 </script>
 {% endblock %}

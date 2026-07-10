@@ -18,7 +18,12 @@ TOOL_REPO = "https://github.com/shawnmarck/sparkbench"
 HF_BASE = "https://huggingface.co"
 EDITORS_PICK_ID = "nvidia/qwen3.6-35b-a3b"
 EDITORS_PICK_PROFILE = "qwen36-35b-a3b-mtp-eugr"
+# Legacy bench-v2 fill ratio (kept for ladder metadata). Display headline is PBM 4k.
 BENCH_FILL_RATIO = 0.75
+PBM_DISPLAY_FILL = "4k"
+PBM_DISPLAY_LABEL = "4k context fill"
+PBM_FILL_KEYS = ("4k", "50k", "100k")
+PBM_FILL_TOKENS = {"4k": 4096, "50k": 50000, "100k": 100000}
 
 PRODUCT_ENGINES = ["eugr", "llamacpp", "ds4"]
 
@@ -788,20 +793,175 @@ def attach_bench_runs(
     m["bench_runs"] = runs
 
 
+def load_pbm_profiles() -> dict:
+    path = f"{DATA_DIR}/perfbench-metrics.yaml"
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        data = yaml.safe_load(f) or {}
+    raw = data.get("profiles") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def pbm_tok_s(pbm: dict, profile_id: str | None, fill: str = PBM_DISPLAY_FILL):
+    if not profile_id:
+        return None
+    entry = pbm.get(profile_id) or {}
+    val = entry.get(f"tok_s_{fill}")
+    if val is None:
+        return None
+    try:
+        return round(float(val), 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pbm_curve_points(fills: dict[str, float | None]) -> list[dict]:
+    points = []
+    for key in PBM_FILL_KEYS:
+        tok = fills.get(key)
+        if tok is None:
+            continue
+        points.append({
+            "fill": key,
+            "tokens": PBM_FILL_TOKENS[key],
+            "tok_s": tok,
+        })
+    return points
+
+
+def render_pbm_sparkline(points: list[dict], *, w: int = 56, h: int = 22) -> str | None:
+    """Tiny inline SVG for leaderboard rows (3-point fill curve)."""
+    if len(points) < 2:
+        return None
+    pad_x, pad_y = 2, 3
+    xs = [i for i in range(len(points))]
+    ys = [float(p["tok_s"]) for p in points]
+    y_min, y_max = min(ys), max(ys)
+    y_span = max(y_max - y_min, 0.1)
+    x_span = max(len(points) - 1, 1)
+    coords = []
+    for i, y in enumerate(ys):
+        px = pad_x + (i / x_span) * (w - 2 * pad_x)
+        py = h - pad_y - ((y - y_min) / y_span) * (h - 2 * pad_y)
+        coords.append(f"{px:.1f},{py:.1f}")
+    poly = " ".join(coords)
+    dots = "".join(
+        f'<circle cx="{c.split(",")[0]}" cy="{c.split(",")[1]}" r="1.6" fill="#f5a14a"/>'
+        for c in coords
+    )
+    return (
+        f'<svg class="pbm-spark" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
+        f'aria-hidden="true" focusable="false">'
+        f'<polyline fill="none" stroke="#f5a14a" stroke-width="1.5" '
+        f'stroke-linecap="round" stroke-linejoin="round" points="{poly}"/>'
+        f"{dots}</svg>"
+    )
+
+
+def render_pbm_chart(points: list[dict], *, w: int = 420, h: int = 200) -> dict | None:
+    """Detail-page chart geometry: path, dots, axis labels."""
+    if len(points) < 2:
+        return None
+    left, right, top, bottom = 44, 18, 16, 36
+    plot_w = w - left - right
+    plot_h = h - top - bottom
+    ys = [float(p["tok_s"]) for p in points]
+    y_max = max(ys) * 1.12
+    y_min = 0.0
+    y_span = max(y_max - y_min, 0.1)
+    x_span = max(len(points) - 1, 1)
+
+    plotted = []
+    for i, p in enumerate(points):
+        x = left + (i / x_span) * plot_w
+        y = top + plot_h - ((float(p["tok_s"]) - y_min) / y_span) * plot_h
+        plotted.append({
+            "fill": p["fill"],
+            "tok_s": p["tok_s"],
+            "x": round(x, 1),
+            "y": round(y, 1),
+        })
+
+    path = "M " + " L ".join(f'{p["x"]},{p["y"]}' for p in plotted)
+    # Soft area under the curve
+    area = (
+        f'{path} L {plotted[-1]["x"]},{top + plot_h} '
+        f'L {plotted[0]["x"]},{top + plot_h} Z'
+    )
+    y_ticks = []
+    for frac in (0.0, 0.5, 1.0):
+        yy = top + frac * plot_h
+        label_val = y_max * (1.0 - frac)
+        y_ticks.append({"y": round(yy, 1), "label": f"{label_val:.0f}"})
+
+    return {
+        "w": w,
+        "h": h,
+        "left": left,
+        "top": top,
+        "plot_w": plot_w,
+        "plot_h": plot_h,
+        "path": path,
+        "area": area,
+        "points": plotted,
+        "y_ticks": y_ticks,
+        "baseline_y": top + plot_h,
+    }
+
+
+def attach_pbm_metrics(m: dict, v: dict, pbm: dict, *, profile: str | None = None) -> None:
+    """Attach 4k/50k/100k PBM fills, retention, and chart geometry."""
+    profile = profile or m.get("golden_profile") or v.get("tok_s_profile")
+    fills = {key: pbm_tok_s(pbm, profile, key) for key in PBM_FILL_KEYS}
+    m["pbm_profile"] = profile
+    m["pbm_4k"] = fills["4k"]
+    m["pbm_50k"] = fills["50k"]
+    m["pbm_100k"] = fills["100k"]
+    m["pbm_fills"] = fills
+
+    tok4 = fills["4k"]
+    tok100 = fills["100k"]
+    if tok4 and tok100 is not None and tok4 > 0:
+        m["pbm_retention"] = round(tok100 / tok4 * 100)
+    else:
+        m["pbm_retention"] = None
+
+    curve = _pbm_curve_points(fills)
+    m["pbm_curve"] = curve
+    m["pbm_spark_svg"] = render_pbm_sparkline(curve)
+    m["pbm_chart"] = render_pbm_chart(curve)
+
+    # Default leaderboard headline = 4k
+    if tok4 is not None:
+        m["tok_s"] = tok4
+        m["tok_s_ctx"] = PBM_FILL_TOKENS["4k"]
+        m["tok_s_ctx_label"] = "4k"
+        m["throughput"] = format_throughput(tok4, PBM_FILL_TOKENS["4k"])
+        m["tok_s_method"] = "perfbench-metrics"
+        m["pbm_fill"] = "4k"
+
+
 def apply_editors_pick_headline(
     m: dict,
     recipes_by_id: dict[str, dict],
     benchmarks: dict[str, dict],
     profile_ctx: dict[str, dict],
+    pbm: dict | None = None,
 ) -> None:
     """Editor's pick highlights the MTP companion profile when benched."""
     if m["id"] != EDITORS_PICK_ID:
         return
     recipe = recipes_by_id.get(EDITORS_PICK_PROFILE) or {}
-    bench = benchmarks.get(EDITORS_PICK_PROFILE) or {}
     name = (recipe.get("name") or "").strip()
     if name:
         m["name"] = _RECIPE_NAME_PREFIX_RE.sub("", name).strip() or name
+    pbm = pbm or {}
+    if pbm_tok_s(pbm, EDITORS_PICK_PROFILE) is not None:
+        attach_pbm_metrics(m, {}, pbm, profile=EDITORS_PICK_PROFILE)
+        m["peak_profile"] = EDITORS_PICK_PROFILE
+        return
+    bench = benchmarks.get(EDITORS_PICK_PROFILE) or {}
     if bench.get("tok_s") is None:
         return
     ctx = resolve_profile_ctx(EDITORS_PICK_PROFILE, profile_ctx)
@@ -858,6 +1018,7 @@ def load_data():
     benchmarks = load_inference_benchmarks()
     bench_history = load_inference_benchmark_history()
     recipes_by_id, recipes_by_inv, profiles_by_inv = load_recipes()
+    pbm = load_pbm_profiles()
 
     models = []
     for inv_path, v in verification.items():
@@ -896,7 +1057,8 @@ def load_data():
         recipe = recipes_by_id.get(m.get("golden_profile") or "") or recipes_by_inv.get(inv_path)
         attach_bench_ladder(m, v, recipe, profile_ctx, benchmarks)
         attach_bench_runs(m, v, profile_ctx, benchmarks, bench_history, profiles_by_inv)
-        apply_editors_pick_headline(m, recipes_by_id, benchmarks, profile_ctx)
+        attach_pbm_metrics(m, v, pbm)
+        apply_editors_pick_headline(m, recipes_by_id, benchmarks, profile_ctx, pbm=pbm)
         models.append(m)
 
     models.sort(key=lambda m: m["tok_s"] or 0, reverse=True)
@@ -910,6 +1072,10 @@ def compute_stats(models):
     editors_pick = next((m for m in models if m["id"] == EDITORS_PICK_ID), None)
     golden_models = [m for m in models if m.get("golden_profile")]
     max_ctx_benched = [m for m in golden_models if m.get("max_ctx_has_bench")]
+    pbm_counts = {
+        key: sum(1 for m in models if m.get(f"pbm_{key}") is not None)
+        for key in PBM_FILL_KEYS
+    }
     data_updated_at = ""
     stamps = [str(m.get("updated_at") or "")[:10] for m in models if m.get("updated_at")]
     if stamps:
@@ -926,6 +1092,10 @@ def compute_stats(models):
         "max_ctx_bench_count": len(max_ctx_benched),
         "bench_fill_ratio": BENCH_FILL_RATIO,
         "bench_fill_pct": int(BENCH_FILL_RATIO * 100),
+        "pbm_fill": PBM_DISPLAY_FILL,
+        "pbm_fill_label": PBM_DISPLAY_LABEL,
+        "pbm_fill_keys": list(PBM_FILL_KEYS),
+        "pbm_counts": pbm_counts,
         "data_updated_at": data_updated_at,
     }
 
@@ -1000,13 +1170,21 @@ def build():
     use_case_groups = group_by_use_case(models)
     built_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Compute bar widths relative to peak (both ranking modes)
+    # Compute bar widths relative to peak for each PBM fill (+ legacy max-ctx)
     peak = stats["peak_tok_s"] or 1
     max_ctx_peak = max((m["max_ctx_tok_s"] or 0) for m in models) or 1
+    fill_peaks = {
+        key: max((m.get(f"pbm_{key}") or 0) for m in models) or 1
+        for key in PBM_FILL_KEYS
+    }
     for m in models:
         m["tok_s_pct"] = round((m["tok_s"] or 0) / peak * 100, 1)
         m["max_ctx_tok_s_pct"] = round((m["max_ctx_tok_s"] or 0) / max_ctx_peak * 100, 1)
+        for key in PBM_FILL_KEYS:
+            val = m.get(f"pbm_{key}") or 0
+            m[f"pbm_{key}_pct"] = round(val / fill_peaks[key] * 100, 1)
         m["editors_pick"] = m["id"] == EDITORS_PICK_ID
+    stats["pbm_fill_peaks"] = {k: round(v, 1) for k, v in fill_peaks.items()}
 
     os.makedirs(OUT_DIR, exist_ok=True)
     shutil.copytree("public", f"{OUT_DIR}/public", dirs_exist_ok=True)

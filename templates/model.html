@@ -20,9 +20,27 @@
 
   <div class="stat-grid">
     <div class="stat-cell accent">
-      <div class="lab">Throughput</div>
-      <div class="val">{% if model.tok_s %}{{ model.tok_s }}<span class="unit">t/s</span>{% if model.tok_s_ctx_label %}<span class="unit ctx-at">@ {{ model.tok_s_ctx_label }}</span>{% endif %}{% else %}—{% endif %}</div>
+      <div class="lab">Throughput @ 4k</div>
+      <div class="val">{% if model.pbm_4k is not none %}{{ model.pbm_4k }}<span class="unit">t/s</span>{% elif model.tok_s %}{{ model.tok_s }}<span class="unit">t/s</span>{% else %}—{% endif %}</div>
     </div>
+    {% if model.pbm_50k is not none %}
+    <div class="stat-cell">
+      <div class="lab">@ 50k fill</div>
+      <div class="val">{{ model.pbm_50k }}<span class="unit">t/s</span></div>
+    </div>
+    {% endif %}
+    {% if model.pbm_100k is not none %}
+    <div class="stat-cell">
+      <div class="lab">@ 100k fill</div>
+      <div class="val">{{ model.pbm_100k }}<span class="unit">t/s</span></div>
+    </div>
+    {% endif %}
+    {% if model.pbm_retention is not none %}
+    <div class="stat-cell">
+      <div class="lab">Retention 100k÷4k</div>
+      <div class="val">{{ model.pbm_retention }}<span class="unit">%</span></div>
+    </div>
+    {% endif %}
     <div class="stat-cell">
       <div class="lab">Engine</div>
       <div class="val" style="font-size: 18px;">{{ (model.engine | engine_label) if model.engine else "—" }}</div>
@@ -39,22 +57,57 @@
       <div class="val" style="font-size: 18px;">{{ model.release_date }}</div>
     </div>
     {% endif %}
-    {% if model.updated_at %}
-    <div class="stat-cell">
-      <div class="lab">Benchmarked</div>
-      <div class="val" style="font-size: 18px;">{{ model.updated_at[:10] }}</div>
-    </div>
-    {% endif %}
   </div>
 
   <p class="detail-bench-method">
-    Throughput uses bench v2: we prefill to ~{{ stats.bench_fill_pct }}% of the max context window, then measure decode under a simulated agent workload — not a few-token micro-benchmark.
+    Headline numbers are <strong>perfbench-metrics (PBM)</strong>: decode tok/s after a fixed context fill
+    (4k / 50k / 100k), same agent-style workload as bench v2. Retention is how much of the 4k speed remains at 100k.
   </p>
+
+  {% if model.pbm_chart %}
+  <div class="detail-section">
+    <h3>Fill curve</h3>
+    <p class="detail-ladder-intro">Throughput vs context fill — how the model holds up as the window grows.</p>
+    <div class="pbm-chart-wrap">
+      <svg class="pbm-chart" viewBox="0 0 {{ model.pbm_chart.w }} {{ model.pbm_chart.h }}"
+           width="100%" role="img"
+           aria-label="Throughput curve across 4k, 50k, and 100k context fills">
+        {% for tick in model.pbm_chart.y_ticks %}
+        <line class="pbm-grid" x1="{{ model.pbm_chart.left }}" y1="{{ tick.y }}"
+              x2="{{ model.pbm_chart.left + model.pbm_chart.plot_w }}" y2="{{ tick.y }}"/>
+        <text class="pbm-axis" x="{{ model.pbm_chart.left - 8 }}" y="{{ tick.y + 4 }}" text-anchor="end">{{ tick.label }}</text>
+        {% endfor %}
+        <line class="pbm-axis-line" x1="{{ model.pbm_chart.left }}" y1="{{ model.pbm_chart.top }}"
+              x2="{{ model.pbm_chart.left }}" y2="{{ model.pbm_chart.baseline_y }}"/>
+        <line class="pbm-axis-line" x1="{{ model.pbm_chart.left }}" y1="{{ model.pbm_chart.baseline_y }}"
+              x2="{{ model.pbm_chart.left + model.pbm_chart.plot_w }}" y2="{{ model.pbm_chart.baseline_y }}"/>
+        <path class="pbm-area" d="{{ model.pbm_chart.area }}"/>
+        <path class="pbm-line" d="{{ model.pbm_chart.path }}" fill="none"/>
+        {% for p in model.pbm_chart.points %}
+        <circle class="pbm-dot" cx="{{ p.x }}" cy="{{ p.y }}" r="4.5"/>
+        <text class="pbm-point-label" x="{{ p.x }}" y="{{ p.y - 10 }}" text-anchor="middle">{{ p.tok_s }}</text>
+        <text class="pbm-axis pbm-x-label" x="{{ p.x }}" y="{{ model.pbm_chart.baseline_y + 22 }}" text-anchor="middle">{{ p.fill }}</text>
+        {% endfor %}
+        <text class="pbm-axis pbm-y-caption" x="14" y="{{ model.pbm_chart.top + model.pbm_chart.plot_h / 2 }}"
+              text-anchor="middle" transform="rotate(-90 14 {{ model.pbm_chart.top + model.pbm_chart.plot_h / 2 }})">tok/s</text>
+      </svg>
+    </div>
+  </div>
+  {% elif model.pbm_curve %}
+  <div class="detail-section">
+    <h3>Fill points</h3>
+    <ul class="pbm-fill-list">
+      {% for p in model.pbm_curve %}
+      <li><span class="mono">{{ p.fill }}</span> · {{ p.tok_s }}<span class="unit">t/s</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 
   {% if model.bench_ladder %}
   <div class="detail-section">
     <h3>Context ladder</h3>
-    <p class="detail-ladder-intro">Throughput at each benched context window{% if model.bench_ladder|length == 1 %} (single measurement){% endif %}.</p>
+    <p class="detail-ladder-intro">Older bench-v2 / golden cells at each benched context window{% if model.bench_ladder|length == 1 %} (single measurement){% endif %}.</p>
     <table class="ladder-table">
       <thead>
         <tr>
@@ -125,7 +178,7 @@
   {% if model.golden_profile %}
   <div class="detail-section">
     <h3>Golden profile</h3>
-    <p class="mono">{{ model.golden_profile }}</p>
+    <p class="mono">{{ model.golden_profile }}{% if model.pbm_profile and model.pbm_profile != model.golden_profile %} · PBM {{ model.pbm_profile }}{% endif %}</p>
   </div>
   {% endif %}
 
