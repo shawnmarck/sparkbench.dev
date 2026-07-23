@@ -29,7 +29,7 @@
   <div class="hero-stats">
     <div class="hero-stat">
       <div class="num">{{ stats.count }}</div>
-      <div class="label">Models benched</div>
+      <div class="label">Recipes benched</div>
     </div>
     <div class="hero-stat">
       <div class="num throughput-display">{% if stats.peak_throughput %}{{ stats.peak_throughput }}{% else %}—{% endif %}</div>
@@ -60,7 +60,7 @@
 <section class="section section-block" id="leaderboard">
   <div class="section-head">
     <h2>Leaderboard</h2>
-    <div class="meta" id="lb-meta">Sorted by PBM @ 4k · {{ stats.count }} models{% if stats.data_updated_at %} · Data updated {{ stats.data_updated_at }}{% endif %}</div>
+    <div class="meta" id="lb-meta">Sorted by PBM @ 4k · {{ stats.count }} recipes{% if stats.data_updated_at %} · Data updated {{ stats.data_updated_at }}{% endif %}</div>
   </div>
 
   <div class="lb-notice" id="lb-notice">
@@ -117,7 +117,7 @@
           data-has-4k="{{ 1 if m.pbm_4k is not none else 0 }}"
           data-has-50k="{{ 1 if m.pbm_50k is not none else 0 }}"
           data-has-100k="{{ 1 if m.pbm_100k is not none else 0 }}"
-          data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.use_cases|join(' ')))|lower }}">
+          data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.quant_label or '') + ' ' + (m.use_cases|join(' ')))|lower }}">
         <td class="lb-rank"><span class="lb-rank-num">{{ "%02d"|format(loop.index) }}</span><span class="lb-rank-delta" data-rank-delta hidden aria-hidden="true"></span></td>
         <td class="lb-name">
           <a href="{{ root }}models/{{ m.id.replace('/', '_') }}/" class="lb-name-link">
@@ -126,7 +126,10 @@
             {% endif %}
             {{ m.name }}
           </a>
-          <span class="lab">{{ m.id }}</span>
+          <div class="lb-name-meta">
+            <span class="lab">{{ m.id }}</span>
+            {% if m.quant_label %}<span class="tag tag-quant">{{ m.quant_label }}</span>{% endif %}
+          </div>
         </td>
         <td class="lb-tags">
           {% for uc in m.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
@@ -250,9 +253,9 @@ spark inference bench</pre>
   let sortDir = -1;
 
   const FILL_META = {
-    '4k': 'Sorted by PBM @ 4k · ' + modelCount + ' models',
-    '50k': 'Sorted by PBM @ 50k · ' + modelCount + ' models',
-    '100k': 'Sorted by PBM @ 100k · ' + modelCount + ' models',
+    '4k': 'Sorted by PBM @ 4k · ' + modelCount + ' recipes',
+    '50k': 'Sorted by PBM @ 50k · ' + modelCount + ' recipes',
+    '100k': 'Sorted by PBM @ 100k · ' + modelCount + ' recipes',
   };
   const FILL_METHOD = {
     '4k': 'Measured at 4k context fill (PBM)',

@@ -9,69 +9,31 @@
   <a href="{{ root }}" class="detail-back">← Leaderboard</a>
 
   <div class="detail-hero">
-    <div class="detail-lab">{{ model.id }}</div>
     <h1>{{ model.name }}</h1>
+    <div class="detail-identity">
+      <span class="mono detail-id">{{ model.id }}</span>
+      {% if model.hf_ok %}
+      <a class="detail-hf" href="{{ model.hf_url }}" target="_blank" rel="noopener">{{ model.hf_repo }} on HuggingFace ↗</a>
+      {% else %}
+      <span class="hf-gated">{{ model.hf_repo }} — gated or private</span>
+      {% endif %}
+    </div>
     <div class="detail-meta">
-      <span class="tag"><span class="engine-{{ model.engine }}">{{ model.engine | engine_label }}</span></span>
+      {% if model.quant_label %}<span class="tag">{{ model.quant_label }}</span>{% endif %}
       {% if model.params_detail %}<span class="tag">{% if model.is_moe %}MoE · {% endif %}{{ model.params_detail }}</span>{% endif %}
+      {% if model.engine %}<span class="tag"><span class="engine-{{ model.engine }}">{{ model.engine | engine_label }}</span></span>{% endif %}
       {% for uc in model.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
     </div>
   </div>
 
-  <div class="stat-grid">
-    <div class="stat-cell accent">
-      <div class="lab">Throughput @ 4k</div>
-      <div class="val">{% if model.pbm_4k is not none %}{{ model.pbm_4k }}<span class="unit">t/s</span>{% elif model.tok_s %}{{ model.tok_s }}<span class="unit">t/s</span>{% else %}—{% endif %}</div>
-    </div>
-    {% if model.pbm_50k is not none %}
-    <div class="stat-cell">
-      <div class="lab">@ 50k fill</div>
-      <div class="val">{{ model.pbm_50k }}<span class="unit">t/s</span></div>
-    </div>
-    {% endif %}
-    {% if model.pbm_100k is not none %}
-    <div class="stat-cell">
-      <div class="lab">@ 100k fill</div>
-      <div class="val">{{ model.pbm_100k }}<span class="unit">t/s</span></div>
-    </div>
-    {% endif %}
-    {% if model.pbm_retention is not none %}
-    <div class="stat-cell">
-      <div class="lab">Retention 100k÷4k</div>
-      <div class="val">{{ model.pbm_retention }}<span class="unit">%</span></div>
-    </div>
-    {% endif %}
-    <div class="stat-cell">
-      <div class="lab">Engine</div>
-      <div class="val" style="font-size: 18px;">{{ (model.engine | engine_label) if model.engine else "—" }}</div>
-    </div>
-    {% if model.params_detail %}
-    <div class="stat-cell">
-      <div class="lab">Parameters</div>
-      <div class="val params-val">{{ model.params_detail }}</div>
-    </div>
-    {% endif %}
-    {% if model.release_date %}
-    <div class="stat-cell">
-      <div class="lab">Released</div>
-      <div class="val" style="font-size: 18px;">{{ model.release_date }}</div>
-    </div>
-    {% endif %}
-  </div>
-
-  <p class="detail-bench-method">
-    Headline numbers are <strong>perfbench-metrics (PBM)</strong>: decode tok/s after a fixed context fill
-    (4k / 50k / 100k), same agent-style workload as bench v2. Retention is how much of the 4k speed remains at 100k.
-  </p>
-
-  {% if model.pbm_chart %}
-  <div class="detail-section">
-    <h3>Fill curve</h3>
-    <p class="detail-ladder-intro">Throughput vs context fill — how the model holds up as the window grows.</p>
+  {% if model.pbm_chart or model.pbm_curve %}
+  <div class="detail-section detail-throughput">
+    <h3>Throughput</h3>
+    {% if model.pbm_chart %}
     <div class="pbm-chart-wrap">
       <svg class="pbm-chart" viewBox="0 0 {{ model.pbm_chart.w }} {{ model.pbm_chart.h }}"
            width="100%" role="img"
-           aria-label="Throughput curve across 4k, 50k, and 100k context fills">
+           aria-label="Throughput curve across context fills">
         {% for tick in model.pbm_chart.y_ticks %}
         <line class="pbm-grid" x1="{{ model.pbm_chart.left }}" y1="{{ tick.y }}"
               x2="{{ model.pbm_chart.left + model.pbm_chart.plot_w }}" y2="{{ tick.y }}"/>
@@ -92,101 +54,74 @@
               text-anchor="middle" transform="rotate(-90 14 {{ model.pbm_chart.top + model.pbm_chart.plot_h / 2 }})">tok/s</text>
       </svg>
     </div>
-  </div>
-  {% elif model.pbm_curve %}
-  <div class="detail-section">
-    <h3>Fill points</h3>
-    <ul class="pbm-fill-list">
+    {% elif model.pbm_curve %}
+    <ul class="pbm-fill-strip">
       {% for p in model.pbm_curve %}
-      <li><span class="mono">{{ p.fill }}</span> · {{ p.tok_s }}<span class="unit">t/s</span></li>
+      <li>
+        <span class="pbm-fill-lab">@ {{ p.fill }}</span>
+        <span class="pbm-fill-val">{{ p.tok_s }}<span class="unit">t/s</span></span>
+      </li>
       {% endfor %}
     </ul>
+    {% endif %}
+    <p class="detail-bench-method">Decode tok/s after a fixed context fill (PBM) — same agent-style workload as bench v2.</p>
   </div>
   {% endif %}
 
-  {% if model.bench_ladder %}
+  {% if model.recipe_summary %}
   <div class="detail-section">
-    <h3>Context ladder</h3>
-    <p class="detail-ladder-intro">Older bench-v2 / golden cells at each benched context window{% if model.bench_ladder|length == 1 %} (single measurement){% endif %}.</p>
-    <table class="ladder-table">
-      <thead>
-        <tr>
-          <th>Context</th>
-          <th>KV</th>
-          <th>Throughput</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in model.bench_ladder %}
-        <tr{% if row.golden or row.peak %} class="{% if row.golden %}ladder-golden{% endif %}{% if row.peak %}{% if row.golden %} {% endif %}ladder-peak{% endif %}"{% endif %}>
-          <td>
-            @ {{ row.ctx_label }}
-            {% if row.peak %}<span class="ladder-tag">peak</span>{% endif %}
-            {% if row.golden %}<span class="ladder-tag">golden</span>{% endif %}
-          </td>
-          <td class="mono">{% if row.kv %}{{ row.kv }}{% else %}—{% endif %}</td>
-          <td>{{ row.tok_s }}<span class="unit">t/s</span></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <h3>Recipe</h3>
+    <dl class="recipe-dl">
+      {% if model.recipe_summary.profile %}
+      <div>
+        <dt>Profile</dt>
+        <dd class="mono">{{ model.recipe_summary.profile }}</dd>
+      </div>
+      {% endif %}
+      {% if model.recipe_summary.engine_label %}
+      <div>
+        <dt>Engine</dt>
+        <dd>{{ model.recipe_summary.engine_label }}</dd>
+      </div>
+      {% endif %}
+      {% if model.recipe_summary.ctx_label %}
+      <div>
+        <dt>Context</dt>
+        <dd class="mono">{{ model.recipe_summary.ctx_label }}{% if model.recipe_summary.kv %} · {{ model.recipe_summary.kv }} KV{% endif %}</dd>
+      </div>
+      {% elif model.recipe_summary.kv %}
+      <div>
+        <dt>KV</dt>
+        <dd class="mono">{{ model.recipe_summary.kv }}</dd>
+      </div>
+      {% endif %}
+      {% if model.recipe_summary.served_name %}
+      <div>
+        <dt>Served as</dt>
+        <dd class="mono">{{ model.recipe_summary.served_name }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+    {% if model.recipe_summary.yaml_url %}
+    <p class="detail-recipe-link"><a href="{{ model.recipe_summary.yaml_url }}" target="_blank" rel="noopener">Recipe YAML ↗</a></p>
+    {% endif %}
+  </div>
+  {% elif model.golden_profile %}
+  <div class="detail-section">
+    <h3>Recipe</h3>
+    <p class="mono">{{ model.golden_profile }}</p>
   </div>
   {% endif %}
 
-  {% if model.bench_runs %}
+  {% if model.run_cmd %}
   <div class="detail-section">
-    <h3>Benchmark runs</h3>
-    <p class="detail-ladder-intro">Recorded inference benchmark sessions for this model's profile{% if model.bench_runs|length == 1 %} (single run){% endif %}.</p>
-    <div class="runs-table-wrap">
-      <table class="runs-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Profile</th>
-            <th>Method</th>
-            <th>Avg</th>
-            <th>Session t/s</th>
-            <th>Range</th>
-            <th>Fill</th>
-            <th>Tool</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for run in model.bench_runs %}
-          <tr{% if run.latest %} class="runs-latest"{% endif %}>
-            <td class="mono">{{ run.date or "—" }}{% if run.latest %}<span class="ladder-tag">latest</span>{% endif %}</td>
-            <td class="mono runs-profile">{{ run.profile or "—" }}</td>
-            <td class="mono">{{ run.method or "—" }}{% if run.bench_version %}<span class="runs-ver">v{{ run.bench_version }}</span>{% endif %}</td>
-            <td>{% if run.tok_s %}{{ run.tok_s }}<span class="unit">t/s</span>{% else %}—{% endif %}</td>
-            <td class="mono">{% if run.run_tok_s %}{{ run.run_tok_s|join(" · ") }}{% elif run.session_label %}{{ run.session_label }}{% else %}—{% endif %}</td>
-            <td class="mono">{% if run.tok_s_min is not none and run.tok_s_max is not none and run.tok_s_min != run.tok_s_max %}{{ run.tok_s_min }}–{{ run.tok_s_max }}{% else %}—{% endif %}</td>
-            <td class="mono">{% if run.context_fill %}~{{ "{:,}".format(run.context_fill) }}{% elif run.ctx_label %}@ {{ run.ctx_label }}{% else %}—{% endif %}</td>
-            <td>{% if run.tool_ok is sameas true %}<span class="runs-ok">ok</span>{% elif run.tool_ok is sameas false %}<span class="runs-fail">fail</span>{% else %}—{% endif %}</td>
-          </tr>
-          {% if run.note %}
-          <tr class="runs-note-row">
-            <td colspan="8" class="runs-note mono">{{ run.note }}</td>
-          </tr>
-          {% endif %}
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  {% endif %}
-
-  {% if model.golden_profile %}
-  <div class="detail-section">
-    <h3>Golden profile</h3>
-    <p class="mono">{{ model.golden_profile }}{% if model.pbm_profile and model.pbm_profile != model.golden_profile %} · PBM {{ model.pbm_profile }}{% endif %}</p>
-  </div>
-  {% endif %}
-
-  {% if model.capabilities %}
-  <div class="detail-section">
-    <h3>Capabilities</h3>
-    <div style="display:flex; flex-wrap:wrap; gap:6px;">
-      {% for cap in model.capabilities %}<span class="tag">{{ cap }}</span>{% endfor %}
+    <h3>Run on your Spark</h3>
+    <div class="code-block detail-run">
+      <div class="code-block-head">
+        <span>single node</span>
+        <span>shell</span>
+      </div>
+<pre>{{ model.run_cmd }}</pre>
     </div>
   </div>
   {% endif %}
@@ -201,21 +136,85 @@
   {% if model.note %}
   <div class="detail-section">
     <h3>Bench notes</h3>
-    <p class="mono" style="font-size:12.5px;">{{ model.note }}</p>
+    <p class="mono detail-note">{{ model.note }}</p>
   </div>
   {% endif %}
 
-  <div class="detail-section">
-    <h3>Links</h3>
-    <ul class="detail-links">
-      {% if model.hf_ok %}
-      <li><a href="{{ model.hf_url }}" target="_blank" rel="noopener">{{ model.hf_repo }} on HuggingFace ↗</a>{% if model.release_date %}<span class="detail-link-meta"> · released {{ model.release_date }}</span>{% endif %}</li>
-      {% else %}
-      <li><span class="hf-gated">{{ model.hf_repo }}</span> — gated or private repo on HuggingFace, no public link available.</li>
-      {% endif %}
-      <li><a href="{{ tool_repo }}/blob/main/data/golden-recipes.yaml" target="_blank" rel="noopener">Golden recipe definition ↗</a></li>
-    </ul>
-  </div>
+  {% if model.bench_ladder or model.bench_runs %}
+  <details class="detail-history">
+    <summary>Measurement history</summary>
+    {% if model.bench_ladder %}
+    <div class="detail-section">
+      <h3>Context ladder</h3>
+      <p class="detail-ladder-intro">Older bench-v2 / golden cells at each benched context window{% if model.bench_ladder|length == 1 %} (single measurement){% endif %}.</p>
+      <table class="ladder-table">
+        <thead>
+          <tr>
+            <th>Context</th>
+            <th>KV</th>
+            <th>Throughput</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in model.bench_ladder %}
+          <tr{% if row.golden or row.peak %} class="{% if row.golden %}ladder-golden{% endif %}{% if row.peak %}{% if row.golden %} {% endif %}ladder-peak{% endif %}"{% endif %}>
+            <td>
+              @ {{ row.ctx_label }}
+              {% if row.peak %}<span class="ladder-tag">peak</span>{% endif %}
+              {% if row.golden %}<span class="ladder-tag">golden</span>{% endif %}
+            </td>
+            <td class="mono">{% if row.kv %}{{ row.kv }}{% else %}—{% endif %}</td>
+            <td>{{ row.tok_s }}<span class="unit">t/s</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% if model.bench_runs %}
+    <div class="detail-section">
+      <h3>Benchmark runs</h3>
+      <p class="detail-ladder-intro">Recorded inference benchmark sessions for this model's profile{% if model.bench_runs|length == 1 %} (single run){% endif %}.</p>
+      <div class="runs-table-wrap">
+        <table class="runs-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Profile</th>
+              <th>Method</th>
+              <th>Avg</th>
+              <th>Session t/s</th>
+              <th>Range</th>
+              <th>Fill</th>
+              <th>Tool</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in model.bench_runs %}
+            <tr{% if run.latest %} class="runs-latest"{% endif %}>
+              <td class="mono">{{ run.date or "—" }}{% if run.latest %}<span class="ladder-tag">latest</span>{% endif %}</td>
+              <td class="mono runs-profile">{{ run.profile or "—" }}</td>
+              <td class="mono">{{ run.method or "—" }}{% if run.bench_version %}<span class="runs-ver">v{{ run.bench_version }}</span>{% endif %}</td>
+              <td>{% if run.tok_s %}{{ run.tok_s }}<span class="unit">t/s</span>{% else %}—{% endif %}</td>
+              <td class="mono">{% if run.run_tok_s %}{{ run.run_tok_s|join(" · ") }}{% elif run.session_label %}{{ run.session_label }}{% else %}—{% endif %}</td>
+              <td class="mono">{% if run.tok_s_min is not none and run.tok_s_max is not none and run.tok_s_min != run.tok_s_max %}{{ run.tok_s_min }}–{{ run.tok_s_max }}{% else %}—{% endif %}</td>
+              <td class="mono">{% if run.context_fill %}~{{ "{:,}".format(run.context_fill) }}{% elif run.ctx_label %}@ {{ run.ctx_label }}{% else %}—{% endif %}</td>
+              <td>{% if run.tool_ok is sameas true %}<span class="runs-ok">ok</span>{% elif run.tool_ok is sameas false %}<span class="runs-fail">fail</span>{% else %}—{% endif %}</td>
+            </tr>
+            {% if run.note %}
+            <tr class="runs-note-row">
+              <td colspan="8" class="runs-note mono">{{ run.note }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </details>
+  {% endif %}
 
   <div class="detail-meta-line">
     <div>{% if model.updated_at %}Benchmarked {{ model.updated_at[:10] }}{% endif %}</div>

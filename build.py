@@ -476,6 +476,236 @@ def infer_bench_ctx_from_recipe(recipe: dict | None) -> int | None:
     return int(default) if default else None
 
 
+_FORMAT_LABELS = {
+    "nvfp4": "NVFP4",
+    "fp4": "FP4",
+    "fp8": "FP8",
+    "fp16": "FP16",
+    "bf16": "BF16",
+    "q4": "Q4",
+    "q5": "Q5",
+    "q8": "Q8",
+    "prismaquant": "PrismaQuant",
+    "awq": "AWQ",
+    "gptq": "GPTQ",
+}
+
+# Not precision — never use these as the Quant column value.
+_NON_QUANT_LABELS = frozenset({"GGUF", "HF", "MTP", "DFLASH", "SAFETENSORS"})
+
+_ENGINE_VARIANT_ALIASES = {
+    "eugr": {"eugr", "vllm"},
+    "llamacpp": {"llamacpp", "llama", "llama.cpp"},
+    "ds4": {"ds4"},
+}
+
+# Specific llama.cpp / GGUF quants from notes & ids.
+_LLAMA_QUANT_RE = re.compile(
+    r"\b(IQ\d+(?:_[A-Z0-9]+)?|Q\d+_K(?:_[A-Z]+)?|Q\d+_0|Q\d+)\b",
+    re.I,
+)
+
+# Precision tokens, longest / most-specific first.
+_PRECISION_KEYS = (
+    "prismaquant",
+    "nvfp4",
+    "fp16",
+    "bf16",
+    "fp8",
+    "fp4",
+    "awq",
+    "gptq",
+    "q4",
+    "q5",
+    "q8",
+)
+
+# Strip these from display names once Quant has its own column.
+_NAME_QUANT_PAREN_RE = re.compile(
+    r"""\s*[\(\[\{]\s*(?:
+        NVFP4|FP4|FP8|FP16|BF16|AWQ|GPTQ|PrismaQuant|
+        MoQ\s*GGUF|MTP\s*GGUF|GGUF|
+        IQ\d+(?:_[A-Z0-9]+)?|Q\d+_K(?:_[A-Z]+)?|Q\d+|
+        llama\.cpp|eugr|vLLM
+    )\s*[\)\]\}]""",
+    re.I | re.X,
+)
+_NAME_QUANT_TRAIL_RE = re.compile(
+    r"""(?:^|[\s·\-_/,])(?:
+        NVFP4|FP4|FP8|FP16|BF16|AWQ|GPTQ|PrismaQuant|
+        MoQ\s*GGUF|IQ\d+(?:_[A-Z0-9]+)?|Q\d+_K(?:_[A-Z]+)?|Q\d+
+    )\s*$""",
+    re.I | re.X,
+)
+_NAME_ENGINE_PAREN_RE = re.compile(
+    r"\s*\((?:llama\.cpp|eugr|vLLM)\)\s*",
+    re.I,
+)
+
+
+def _format_label(fmt: str | None) -> str | None:
+    if not fmt:
+        return None
+    key = str(fmt).strip().lower()
+    return _FORMAT_LABELS.get(key) or key.upper()
+
+
+def _normalize_quant_label(label: str | None) -> str | None:
+    if not label:
+        return None
+    cleaned = str(label).strip()
+    if not cleaned:
+        return None
+    upper = cleaned.upper().replace(" ", "")
+    if upper in _NON_QUANT_LABELS or cleaned.upper() in _NON_QUANT_LABELS:
+        return None
+    # Canonicalize known keys
+    mapped = _FORMAT_LABELS.get(cleaned.lower())
+    if mapped:
+        return mapped
+    # Keep llama-style quants as written (Q4_K_M, IQ4_XS)
+    if _LLAMA_QUANT_RE.fullmatch(cleaned):
+        return cleaned.upper() if cleaned.upper().startswith("IQ") else cleaned
+    return cleaned
+
+
+def _extract_quant_from_text(*parts: object) -> str | None:
+    hay = " ".join(str(p) for p in parts if p)
+    if not hay:
+        return None
+    # Prefer explicit llama / GGUF quant codes
+    m = _LLAMA_QUANT_RE.search(hay)
+    if m:
+        token = m.group(1)
+        return token.upper() if token.upper().startswith("IQ") else token
+    lower = hay.lower()
+    for key in _PRECISION_KEYS:
+        if re.search(rf"(?:^|[^a-z0-9]){re.escape(key)}(?:[^a-z0-9]|$)", lower):
+            return _format_label(key)
+    return None
+
+
+def derive_quant_label(
+    cat: dict | None,
+    recipe: dict | None,
+    engine: str | None,
+) -> str | None:
+    """Precision/quant for the benched variant (NVFP4, FP8, Q4_K_M, …).
+
+    Returns None when only a container is known (GGUF / HF weights).
+    """
+    cat = cat or {}
+    recipe = recipe or {}
+    engine = (engine or recipe.get("engine") or "").strip().lower()
+    aliases = _ENGINE_VARIANT_ALIASES.get(engine, {engine} if engine else set())
+
+    # 1) Catalog variants matching this engine — note often has the real quant.
+    variants = cat.get("variants") or []
+    if isinstance(variants, list):
+        matched = []
+        for v in variants:
+            if not isinstance(v, dict):
+                continue
+            v_engine = str(v.get("engine") or "").strip().lower()
+            if aliases and v_engine and v_engine not in aliases:
+                continue
+            matched.append(v)
+        picks = matched or [v for v in variants if isinstance(v, dict)]
+        for pick in picks:
+            note = (pick.get("note") or "").strip()
+            from_note = _extract_quant_from_text(note)
+            if from_note:
+                return _normalize_quant_label(from_note)
+            fmt = _normalize_quant_label(_format_label(pick.get("format")))
+            if fmt:
+                return fmt
+            from_repo = _extract_quant_from_text(pick.get("hf_repo"), pick.get("subpath"))
+            if from_repo:
+                return _normalize_quant_label(from_repo)
+
+    # 2) Recipe id / name, catalog identity, capabilities, HF repo.
+    found = _extract_quant_from_text(
+        recipe.get("id"),
+        recipe.get("name"),
+        cat.get("name"),
+        cat.get("slug"),
+        cat.get("hf_repo"),
+        *(cat.get("capabilities") or []),
+    )
+    return _normalize_quant_label(found)
+
+
+# Back-compat alias used during the detail-page redesign.
+derive_variant_label = derive_quant_label
+
+
+def strip_quant_from_name(name: str, quant: str | None = None) -> str:
+    """Remove quant / engine tokens from a display name once Quant is its own column."""
+    cleaned = (name or "").strip()
+    if not cleaned:
+        return cleaned
+
+    cleaned = _NAME_QUANT_PAREN_RE.sub("", cleaned)
+    cleaned = _NAME_ENGINE_PAREN_RE.sub(" ", cleaned)
+    cleaned = _NAME_QUANT_TRAIL_RE.sub("", cleaned)
+
+    if quant:
+        q = re.escape(str(quant).strip())
+        cleaned = re.sub(rf"\s*[(\[{{]\s*{q}\s*[)\]}}]", "", cleaned, flags=re.I)
+        cleaned = re.sub(rf"(?:^|[\s·\-_/,]){q}\s*$", "", cleaned, flags=re.I)
+
+    cleaned = re.sub(r"\s*[·\-_/,]+\s*$", "", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    return cleaned or (name or "").strip()
+
+
+def attach_recipe_summary(m: dict, recipe: dict | None) -> None:
+    """Public recipe fields for the model detail page."""
+    profile = m.get("golden_profile") or (recipe or {}).get("id")
+    if profile:
+        m["run_cmd"] = f"spark inference up {profile}"
+    else:
+        m["run_cmd"] = None
+
+    if not recipe:
+        m["recipe_summary"] = None
+        return
+
+    ctx_block = recipe.get("context") or {}
+    default_ctx = ctx_block.get("default")
+    native_ctx = ctx_block.get("native")
+    try:
+        default_ctx = int(default_ctx) if default_ctx is not None else None
+    except (TypeError, ValueError):
+        default_ctx = None
+    try:
+        native_ctx = int(native_ctx) if native_ctx is not None else None
+    except (TypeError, ValueError):
+        native_ctx = None
+
+    runtime_ctx = infer_bench_ctx_from_recipe(recipe)
+    ctx = runtime_ctx or default_ctx
+    kv = ctx_block.get("kv_default") or None
+    golden_cell = ((ctx_block.get("bench_matrix") or {}).get("golden_cell") or {})
+    if not kv and golden_cell.get("kv"):
+        kv = golden_cell.get("kv")
+
+    rid = str(recipe.get("id") or profile or "")
+    engine = recipe.get("engine") or m.get("engine") or ""
+    m["recipe_summary"] = {
+        "profile": rid or None,
+        "engine": engine,
+        "engine_label": engine_label(engine),
+        "ctx": ctx,
+        "ctx_label": format_ctx_label(ctx) if ctx else None,
+        "native_ctx": native_ctx,
+        "native_ctx_label": format_ctx_label(native_ctx) if native_ctx else None,
+        "kv": kv,
+        "served_name": recipe.get("served_name") or None,
+        "yaml_url": f"{TOOL_REPO}/blob/main/data/recipes/{rid}.yaml" if rid else None,
+    }
+
+
 def _ingest_recipe_doc(
     doc: dict,
     *,
@@ -1055,6 +1285,11 @@ def load_data():
         attach_peak_bench(m, v, profile_ctx, benchmarks, bench_history, profiles_by_inv)
         attach_max_ctx_bench(m, v, profile_ctx, benchmarks)
         recipe = recipes_by_id.get(m.get("golden_profile") or "") or recipes_by_inv.get(inv_path)
+        quant = derive_quant_label(cat, recipe, m.get("engine"))
+        m["quant_label"] = quant
+        m["variant_label"] = quant  # detail-page alias
+        m["name"] = strip_quant_from_name(m["name"], quant)
+        attach_recipe_summary(m, recipe)
         attach_bench_ladder(m, v, recipe, profile_ctx, benchmarks)
         attach_bench_runs(m, v, profile_ctx, benchmarks, bench_history, profiles_by_inv)
         attach_pbm_metrics(m, v, pbm)
