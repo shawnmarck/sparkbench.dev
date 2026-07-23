@@ -117,7 +117,7 @@
           data-has-4k="{{ 1 if m.pbm_4k is not none else 0 }}"
           data-has-50k="{{ 1 if m.pbm_50k is not none else 0 }}"
           data-has-100k="{{ 1 if m.pbm_100k is not none else 0 }}"
-          data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.quant_label or '') + ' ' + (m.use_cases|join(' ')))|lower }}">
+          data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.quant_label or '') + ' ' + (m.spec_tag or '') + ' ' + (m.use_cases|join(' ')))|lower }}">
         <td class="lb-rank"><span class="lb-rank-num">{{ "%02d"|format(loop.index) }}</span><span class="lb-rank-delta" data-rank-delta hidden aria-hidden="true"></span></td>
         <td class="lb-name">
           <a href="{{ root }}models/{{ m.id.replace('/', '_') }}/" class="lb-name-link">
@@ -129,6 +129,7 @@
           <div class="lb-name-meta">
             <span class="lab">{{ m.id }}</span>
             {% if m.quant_label %}<span class="tag tag-quant">{{ m.quant_label }}</span>{% endif %}
+            {% if m.spec_tag %}<span class="tag tag-spec">{{ m.spec_tag }}</span>{% endif %}
           </div>
         </td>
         <td class="lb-tags">

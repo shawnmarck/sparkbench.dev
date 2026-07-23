@@ -20,6 +20,7 @@
     </div>
     <div class="detail-meta">
       {% if model.quant_label %}<span class="tag">{{ model.quant_label }}</span>{% endif %}
+      {% if model.spec_tag %}<span class="tag tag-spec">{{ model.spec_tag }}</span>{% endif %}
       {% if model.params_detail %}<span class="tag">{% if model.is_moe %}MoE · {% endif %}{{ model.params_detail }}</span>{% endif %}
       {% if model.engine %}<span class="tag"><span class="engine-{{ model.engine }}">{{ model.engine | engine_label }}</span></span>{% endif %}
       {% for uc in model.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
@@ -99,6 +100,12 @@
       <div>
         <dt>Served as</dt>
         <dd class="mono">{{ model.recipe_summary.served_name }}</dd>
+      </div>
+      {% endif %}
+      {% if model.recipe_summary.spec_label %}
+      <div>
+        <dt>Draft</dt>
+        <dd>{{ model.recipe_summary.spec_label }}{% if model.recipe_summary.spec_n is not none %} · n{{ model.recipe_summary.spec_n }}{% endif %}</dd>
       </div>
       {% endif %}
     </dl>

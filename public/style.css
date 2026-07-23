@@ -552,6 +552,16 @@ main {
   border: 1px solid var(--border);
   padding: 1px 6px;
 }
+.tag-spec {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  padding: 1px 6px;
+}
 
 .lb-tags { display: flex; gap: 4px; flex-wrap: wrap; }
 .tag {

@@ -667,6 +667,9 @@ def attach_recipe_summary(m: dict, recipe: dict | None) -> None:
     else:
         m["run_cmd"] = None
 
+    # Spec / draft fields even when recipe YAML is missing (tags/capabilities fallback).
+    attach_spec_fields(m, recipe)
+
     if not recipe:
         m["recipe_summary"] = None
         return
@@ -702,8 +705,68 @@ def attach_recipe_summary(m: dict, recipe: dict | None) -> None:
         "native_ctx_label": format_ctx_label(native_ctx) if native_ctx else None,
         "kv": kv,
         "served_name": recipe.get("served_name") or None,
-        "yaml_url": f"{TOOL_REPO}/blob/main/data/recipes/{rid}.yaml" if rid else None,
+        "yaml_url": f"{TOOL_REPO}/blob/main/recipes/{rid}.yaml" if rid else None,
+        "spec_method": m.get("spec_method"),
+        "spec_label": m.get("spec_label"),
+        "spec_n": m.get("spec_n"),
+        "has_draft": m.get("has_draft"),
+        "spec_tag": m.get("spec_tag"),
     }
+
+
+_SPEC_METHOD_LABELS = {
+    "dflash": "DFlash",
+    "mtp": "MTP",
+    "eagle": "EAGLE",
+    "eagle3": "EAGLE-3",
+    "draft": "Draft",
+    "ngram": "NGram",
+}
+
+
+def attach_spec_fields(m: dict, recipe: dict | None) -> None:
+    """Mark when the golden/benched recipe uses a draft / speculative decoder."""
+    recipe = recipe or {}
+    spec = recipe.get("speculative") or {}
+    if not spec and isinstance(recipe.get("mtp"), dict):
+        spec = recipe.get("mtp") or {}
+    method = str(spec.get("method") or "").strip().lower()
+    n_raw = spec.get("num_speculative_tokens")
+    try:
+        n = int(n_raw) if n_raw is not None else None
+    except (TypeError, ValueError):
+        n = None
+
+    # Fallback: recipe tags / id / name when speculative block is absent.
+    if not method:
+        hay = " ".join(
+            str(x)
+            for x in (
+                recipe.get("id"),
+                recipe.get("name"),
+                *(recipe.get("tags") or []),
+                *(m.get("capabilities") or []),
+            )
+            if x
+        ).lower()
+        for key in ("dflash", "eagle3", "eagle", "mtp"):
+            if re.search(rf"(?:^|[^a-z0-9]){re.escape(key)}(?:[^a-z0-9]|$)", hay):
+                method = key
+                break
+
+    label = _SPEC_METHOD_LABELS.get(method) if method else None
+    has_draft = bool(label) or bool(spec.get("sidecar_path") or spec.get("sidecar_inventory"))
+    if has_draft and not label:
+        label = "Draft"
+
+    m["spec_method"] = method or None
+    m["spec_label"] = label
+    m["spec_n"] = n
+    m["has_draft"] = has_draft
+    if has_draft and label:
+        m["spec_tag"] = f"{label} · n{n}" if n is not None else label
+    else:
+        m["spec_tag"] = None
 
 
 def _ingest_recipe_doc(
