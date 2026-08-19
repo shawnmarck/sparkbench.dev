@@ -716,7 +716,9 @@ def attach_recipe_summary(m: dict, recipe: dict | None) -> None:
 
 _SPEC_METHOD_LABELS = {
     "dflash": "DFlash",
+    "dflash2": "DFlash2",
     "mtp": "MTP",
+    "dspark": "DSpark",
     "eagle": "EAGLE",
     "eagle3": "EAGLE-3",
     "draft": "Draft",
@@ -731,6 +733,7 @@ def attach_spec_fields(m: dict, recipe: dict | None) -> None:
     if not spec and isinstance(recipe.get("mtp"), dict):
         spec = recipe.get("mtp") or {}
     method = str(spec.get("method") or "").strip().lower()
+    variant = str(spec.get("variant") or "").strip().lower()
     n_raw = spec.get("num_speculative_tokens")
     try:
         n = int(n_raw) if n_raw is not None else None
@@ -749,12 +752,13 @@ def attach_spec_fields(m: dict, recipe: dict | None) -> None:
             )
             if x
         ).lower()
-        for key in ("dflash", "eagle3", "eagle", "mtp"):
+        for key in ("dflash2", "dflash", "dspark", "eagle3", "eagle", "mtp"):
             if re.search(rf"(?:^|[^a-z0-9]){re.escape(key)}(?:[^a-z0-9]|$)", hay):
                 method = key
                 break
 
-    label = _SPEC_METHOD_LABELS.get(method) if method else None
+    label_key = variant if variant in _SPEC_METHOD_LABELS else method
+    label = _SPEC_METHOD_LABELS.get(label_key) if label_key else None
     has_draft = bool(label) or bool(spec.get("sidecar_path") or spec.get("sidecar_inventory"))
     if has_draft and not label:
         label = "Draft"
