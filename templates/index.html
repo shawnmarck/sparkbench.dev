@@ -72,7 +72,7 @@
   <div class="lb-notice lb-notice-method" id="lb-method">
     <strong id="lb-method-title">Measured at 4k context fill (PBM)</strong>
     <span id="lb-method-body"> — decode tok/s after prefilling a fixed token context (perfbench-metrics).
-    Same agent-style workload as bench v2, but comparable across models at 4k / 50k / 100k fills.</span>
+    Full ladder is 4k + 50k (and 100k when the window fits), so the curve is comparable. 4k-only benches live under All recipes.</span>
   </div>
 
   <div class="lb-controls">
@@ -84,17 +84,16 @@
       <button type="button" class="lb-view" data-fill="50k" aria-pressed="false">50k</button>
       <button type="button" class="lb-view" data-fill="100k" aria-pressed="false">100k</button>
     </div>
+    <div class="lb-view-toggle" role="group" aria-label="Which recipes to list">
+      <button type="button" class="lb-view active" data-scope="ladder" aria-pressed="true" title="Recipes measured at 4k and 50k">Full ladder</button>
+      <button type="button" class="lb-view" data-scope="all" aria-pressed="false" title="Include 4k-only and unpublished ladders">All recipes</button>
+    </div>
     <div class="lb-filters">
       <button class="lb-filter active" data-engine="">All engines</button>
       {% for eng in stats.engines %}
       <button class="lb-filter" data-engine="{{ eng }}">{{ eng | engine_label }}</button>
       {% endfor %}
     </div>
-    {% if stats.folded_count %}
-    <button type="button" class="lb-more" id="lb-show-folded" aria-pressed="false">
-      {{ stats.folded_count }} more
-    </button>
-    {% endif %}
   </div>
 
   <table class="lb-table" id="leaderboard-table">
@@ -267,7 +266,7 @@ spark inference bench</pre>
   const dataUpdated = {{ stats.data_updated_at|tojson }};
   const modelCount = {{ stats.count }};
   const PAGE_SIZE = 12;
-  const foldedCount = {{ stats.folded_count or 0 }};
+  const scopeBtns = document.querySelectorAll('[data-scope]');
   let engine = '';
   let q = '';
   let fill = '4k';
@@ -356,8 +355,8 @@ spark inference bench</pre>
     return rows.filter(r => {
       const okE = !engine || r.dataset.engine === engine;
       const okQ = !searching || tokens.every(t => r.dataset.name.includes(t));
-      const folded = r.dataset.folded === '1';
-      const okF = showFolded || searching || !folded;
+      const incomplete = r.dataset.folded === '1';
+      const okF = showFolded || searching || !incomplete;
       return okE && okQ && okF;
     });
   }
@@ -467,17 +466,17 @@ spark inference bench</pre>
     apply();
   });
 
-  const foldedBtn = document.getElementById('lb-show-folded');
-  if (foldedBtn) {
-    foldedBtn.addEventListener('click', () => {
-      showFolded = !showFolded;
-      foldedBtn.classList.toggle('active', showFolded);
-      foldedBtn.setAttribute('aria-pressed', showFolded ? 'true' : 'false');
-      foldedBtn.textContent = showFolded ? 'Hide extra' : (foldedCount + ' more');
-      page = 1;
-      apply();
+  function setScope(next) {
+    showFolded = next === 'all';
+    scopeBtns.forEach(x => {
+      const on = x.dataset.scope === next;
+      x.classList.toggle('active', on);
+      x.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+    page = 1;
+    apply();
   }
+  scopeBtns.forEach(b => b.addEventListener('click', () => setScope(b.dataset.scope)));
 
   document.getElementById('lb-page-prev')?.addEventListener('click', () => {
     if (page > 1) { page -= 1; apply(); }

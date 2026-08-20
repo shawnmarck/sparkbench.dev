@@ -1346,11 +1346,6 @@ def load_data():
             "why_downloaded": cat.get("why_downloaded", "").strip(),
             "release_date": cat.get("release_date"),
             "now_testing": bool(currently_testing) and inv_path == currently_testing,
-            "folded": (
-                inv_path in leaderboard_more
-                and inv_path != currently_testing
-                and inv_path != EDITORS_PICK_ID
-            ),
         }
         attach_model_params(m, cat)
         override = use_case_overrides.get(inv_path)
@@ -1370,6 +1365,9 @@ def load_data():
         attach_bench_runs(m, v, profile_ctx, benchmarks, bench_history, profiles_by_inv)
         attach_pbm_metrics(m, v, pbm)
         apply_editors_pick_headline(m, recipes_by_id, benchmarks, profile_ctx, pbm=pbm)
+        protected = m.get("now_testing") or inv_path == EDITORS_PICK_ID
+        incomplete = m.get("pbm_50k") is None
+        m["folded"] = (not protected) and (incomplete or inv_path in leaderboard_more)
         models.append(m)
 
     models.sort(key=lambda m: m["tok_s"] or 0, reverse=True)
