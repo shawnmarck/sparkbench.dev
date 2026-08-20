@@ -19,12 +19,16 @@
       {% endif %}
     </div>
     <div class="detail-meta">
+      {% if model.now_testing %}<span class="lb-now-badge" title="Currently serving and under test on Sparky"><span class="lb-now-dot" aria-hidden="true"></span>Now testing</span>{% endif %}
       {% if model.quant_label %}<span class="tag">{{ model.quant_label }}</span>{% endif %}
       {% if model.spec_tag %}<span class="tag tag-spec">{{ model.spec_tag }}</span>{% endif %}
       {% if model.params_detail %}<span class="tag">{% if model.is_moe %}MoE · {% endif %}{{ model.params_detail }}</span>{% endif %}
       {% if model.engine %}<span class="tag"><span class="engine-{{ model.engine }}">{{ model.engine | engine_label }}</span></span>{% endif %}
       {% for uc in model.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
     </div>
+    {% if model.now_testing %}
+    <p class="detail-now">This is the recipe currently serving on Sparky — the lab box we use for day-to-day testing.</p>
+    {% endif %}
   </div>
 
   {% if model.pbm_chart or model.pbm_curve %}

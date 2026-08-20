@@ -1288,6 +1288,7 @@ def load_data():
     catalog = {m["id"]: m for m in catalog_raw}
     golden = golden_raw.get("golden", {})
     leaderboard_exclude = set(golden_raw.get("leaderboard_exclude") or [])
+    currently_testing = str(golden_raw.get("currently_testing") or "").strip()
 
     # Fallback index: for verification keys that don't match a catalog id
     # exactly (e.g. inventory `nvidia/qwen3.6-35b-a3b` vs catalog
@@ -1342,6 +1343,7 @@ def load_data():
             "note": _clean_note(v.get("note", "")),
             "why_downloaded": cat.get("why_downloaded", "").strip(),
             "release_date": cat.get("release_date"),
+            "now_testing": bool(currently_testing) and inv_path == currently_testing,
         }
         attach_model_params(m, cat)
         override = use_case_overrides.get(inv_path)
@@ -1372,6 +1374,7 @@ def compute_stats(models):
     engines_in_data = sorted({m["engine"] for m in models if m["engine"]})
     peak_model = max(models, key=lambda m: m["tok_s"] or 0) if models else None
     editors_pick = next((m for m in models if m["id"] == EDITORS_PICK_ID), None)
+    now_testing = next((m for m in models if m.get("now_testing")), None)
     golden_models = [m for m in models if m.get("golden_profile")]
     max_ctx_benched = [m for m in golden_models if m.get("max_ctx_has_bench")]
     pbm_counts = {
@@ -1390,6 +1393,7 @@ def compute_stats(models):
         "engines": PRODUCT_ENGINES,
         "engines_in_data": engines_in_data,
         "editors_pick": editors_pick,
+        "now_testing": now_testing,
         "max_ctx_golden_count": len(golden_models),
         "max_ctx_bench_count": len(max_ctx_benched),
         "bench_fill_ratio": BENCH_FILL_RATIO,
