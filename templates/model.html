@@ -17,17 +17,20 @@
       {% else %}
       <span class="hf-gated">{{ model.hf_repo }} — gated or private</span>
       {% endif %}
+      {% if model.aa_url %}
+      <a class="detail-hf" href="{{ model.aa_url }}" target="_blank" rel="noopener">Artificial Analysis ↗</a>
+      {% endif %}
     </div>
     <div class="detail-meta">
-      {% if model.now_testing %}<span class="lb-now-badge" title="Currently serving and under test on Sparky"><span class="lb-now-dot" aria-hidden="true"></span>Now testing</span>{% endif %}
+      {% if model.editors_pick %}<span class="lb-now-badge" title="The recipe we'd run first on a Spark right now.">Editor's pick</span>{% endif %}
       {% if model.quant_label %}<span class="tag">{{ model.quant_label }}</span>{% endif %}
       {% if model.spec_tag %}<span class="tag tag-spec">{{ model.spec_tag }}</span>{% endif %}
       {% if model.params_detail %}<span class="tag">{% if model.is_moe %}MoE · {% endif %}{{ model.params_detail }}</span>{% endif %}
       {% if model.engine %}<span class="tag"><span class="engine-{{ model.engine }}">{{ model.engine | engine_label }}</span></span>{% endif %}
       {% for uc in model.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
     </div>
-    {% if model.now_testing %}
-    <p class="detail-now">This is the recipe currently serving on Sparky — the lab box we use for day-to-day testing.</p>
+    {% if model.editors_pick %}
+    <p class="detail-now">Editor's pick — the recipe we'd run first on a Spark right now.</p>
     {% endif %}
   </div>
 
@@ -70,6 +73,53 @@
     </ul>
     {% endif %}
     <p class="detail-bench-method">Decode tok/s after a fixed context fill (PBM) — same agent-style workload as bench v2.</p>
+  </div>
+  {% endif %}
+
+  {% if model.eval_has_any %}
+  <div class="detail-section detail-evals">
+    <h3>Published evals</h3>
+    <p class="detail-bench-method">Vendor-card figures for
+      {% if model.eval_inherited %}<span class="mono">{{ model.eval_base }}</span> — not this pack{% else %}this base model{% endif %}.
+      Not measured on this Spark.</p>
+    <dl class="recipe-dl eval-dl">
+      {% if model.swe_verified %}
+      <div>
+        <dt>SWE-bench Verified</dt>
+        <dd>
+          <span class="eval-score">{{ model.swe_verified.score }}%</span>
+          <a href="{{ model.swe_verified.source_url }}" target="_blank" rel="noopener">{{ model.swe_verified.source_name or "source" }} ↗</a>
+          {% if model.swe_verified.as_of %}<span class="eval-asof">{{ model.swe_verified.as_of }}</span>{% endif %}
+          {% if model.swe_verified.notes %}<span class="eval-notes">{{ model.swe_verified.notes }}</span>{% endif %}
+        </dd>
+      </div>
+      {% endif %}
+      {% if model.terminal_bench %}
+      <div>
+        <dt>Terminal-Bench{% if model.terminal_bench.suite %} {{ model.terminal_bench.suite }}{% endif %}</dt>
+        <dd>
+          <span class="eval-score">{{ model.terminal_bench.score }}%</span>
+          <a href="{{ model.terminal_bench.source_url }}" target="_blank" rel="noopener">{{ model.terminal_bench.source_name or "source" }} ↗</a>
+          {% if model.terminal_bench.as_of %}<span class="eval-asof">{{ model.terminal_bench.as_of }}</span>{% endif %}
+          {% if model.terminal_bench.notes %}<span class="eval-notes">{{ model.terminal_bench.notes }}</span>{% endif %}
+        </dd>
+      </div>
+      {% endif %}
+      {% for extra in model.eval_extras %}
+      <div>
+        <dt>{{ extra.label }}</dt>
+        <dd>
+          <span class="eval-score">{{ extra.score }}%</span>
+          <a href="{{ extra.source_url }}" target="_blank" rel="noopener">{{ extra.source_name or "source" }} ↗</a>
+          {% if extra.as_of %}<span class="eval-asof">{{ extra.as_of }}</span>{% endif %}
+          {% if extra.notes %}<span class="eval-notes">{{ extra.notes }}</span>{% endif %}
+        </dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% if model.aa_url %}
+    <p class="detail-recipe-link"><a href="{{ model.aa_url }}" target="_blank" rel="noopener">Independent board on Artificial Analysis ↗</a> — we do not copy their scores.</p>
+    {% endif %}
   </div>
   {% endif %}
 

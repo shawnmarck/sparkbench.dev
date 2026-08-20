@@ -16,8 +16,8 @@ OUT_DIR = os.environ.get("OUT_DIR", "site")
 SITE_URL = os.environ.get("SITE_URL", "https://sparkbench.dev").rstrip("/")
 TOOL_REPO = "https://github.com/shawnmarck/sparkbench"
 HF_BASE = "https://huggingface.co"
-EDITORS_PICK_ID = "nvidia/qwen3.6-35b-a3b"
-EDITORS_PICK_PROFILE = "qwen36-35b-a3b-mtp-eugr"
+EDITORS_PICK_ID = "ornith-ai/ornith-1.5-35b-a3b"
+EDITORS_PICK_PROFILE = "ornith-ai-ornith-1-5-35b-a3b-nvfp4-b12x-eugr"
 # Legacy bench-v2 fill ratio (kept for ladder metadata). Display headline is PBM 4k.
 BENCH_FILL_RATIO = 0.75
 PBM_DISPLAY_FILL = "4k"
@@ -1173,6 +1173,99 @@ def load_pbm_profiles() -> dict:
     return raw if isinstance(raw, dict) else {}
 
 
+EVAL_EXTRA_LABELS = {
+    "swe_pro": "SWE-bench Pro",
+    "livecodebench": "LiveCodeBench",
+    "gpqa_diamond": "GPQA Diamond",
+}
+
+
+def _eval_score(block: dict | None) -> float | None:
+    if not isinstance(block, dict):
+        return None
+    val = block.get("score")
+    if val is None:
+        return None
+    try:
+        return round(float(val), 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_eval_record(block: dict | None, key: str) -> dict | None:
+    """Refuse scores without a source URL — no orphan percentages."""
+    if not isinstance(block, dict):
+        return None
+    score = _eval_score(block)
+    url = str(block.get("source_url") or "").strip()
+    if score is None or not url:
+        return None
+    return {
+        "key": key,
+        "label": EVAL_EXTRA_LABELS.get(key) or key.replace("_", " "),
+        "score": score,
+        "unit": str(block.get("unit") or "percent"),
+        "suite": str(block.get("suite") or "").strip(),
+        "source_name": str(block.get("source_name") or "").strip(),
+        "source_url": url,
+        "as_of": str(block.get("as_of") or "")[:10],
+        "notes": str(block.get("notes") or "").strip(),
+    }
+
+
+def load_published_evals() -> dict:
+    """Vendor-card SWE/TB overlay. Missing file → empty join."""
+    path = f"{DATA_DIR}/published-evals.yaml"
+    empty = {"models": {}, "alias_to_base": {}}
+    if not os.path.exists(path):
+        return empty
+    with open(path) as f:
+        data = yaml.safe_load(f) or {}
+    models = data.get("models") or {}
+    if not isinstance(models, dict):
+        return empty
+    alias_to_base: dict[str, str] = {}
+    for base_id, entry in models.items():
+        if not isinstance(entry, dict):
+            continue
+        alias_to_base[str(base_id)] = str(base_id)
+        for raw in entry.get("aliases") or []:
+            alias = str(raw).strip()
+            if alias:
+                alias_to_base[alias] = str(base_id)
+    return {"models": models, "alias_to_base": alias_to_base}
+
+
+def attach_published_evals(m: dict, evals: dict) -> None:
+    inv = str(m.get("id") or "")
+    base_id = (evals.get("alias_to_base") or {}).get(inv)
+    entry = (evals.get("models") or {}).get(base_id) if base_id else None
+    m["eval_base"] = base_id
+    m["eval_inherited"] = bool(base_id) and base_id != inv
+    m["aa_url"] = ""
+    m["swe_verified"] = None
+    m["terminal_bench"] = None
+    m["eval_extras"] = []
+    m["eval_has_any"] = False
+    if not isinstance(entry, dict):
+        return
+    m["aa_url"] = str(entry.get("aa_url") or "").strip()
+    m["swe_verified"] = _normalize_eval_record(entry.get("swe_verified"), "swe_verified")
+    m["terminal_bench"] = _normalize_eval_record(entry.get("terminal_bench"), "terminal_bench")
+    extras = entry.get("extras") or {}
+    if isinstance(extras, dict):
+        rows = []
+        for key, block in extras.items():
+            rec = _normalize_eval_record(block, str(key))
+            if rec:
+                rec["label"] = EVAL_EXTRA_LABELS.get(str(key), rec["label"])
+                rows.append(rec)
+        m["eval_extras"] = rows
+    m["eval_has_any"] = bool(
+        m["swe_verified"] or m["terminal_bench"] or m["eval_extras"] or m["aa_url"]
+    )
+
+
 def pbm_tok_s(pbm: dict, profile_id: str | None, fill: str = PBM_DISPLAY_FILL):
     if not profile_id:
         return None
@@ -1392,6 +1485,7 @@ def load_data():
     bench_history = load_inference_benchmark_history()
     recipes_by_id, recipes_by_inv, profiles_by_inv = load_recipes()
     pbm = load_pbm_profiles()
+    published_evals = load_published_evals()
 
     models = []
     for inv_path, v in verification.items():
@@ -1438,6 +1532,7 @@ def load_data():
         attach_bench_runs(m, v, profile_ctx, benchmarks, bench_history, profiles_by_inv)
         attach_pbm_metrics(m, v, pbm)
         apply_editors_pick_headline(m, recipes_by_id, benchmarks, profile_ctx, pbm=pbm)
+        attach_published_evals(m, published_evals)
         protected = m.get("now_testing") or inv_path == EDITORS_PICK_ID
         incomplete = m.get("pbm_50k") is None
         m["folded"] = (not protected) and (incomplete or inv_path in leaderboard_more)
@@ -1485,6 +1580,8 @@ def compute_stats(models):
         "pbm_fill_keys": list(PBM_FILL_KEYS),
         "pbm_counts": pbm_counts,
         "data_updated_at": data_updated_at,
+        "evals_swe_count": sum(1 for m in models if m.get("swe_verified")),
+        "evals_tb_count": sum(1 for m in models if m.get("terminal_bench")),
     }
 
 
@@ -1551,12 +1648,213 @@ def verify_links(models):
     print(f"  release dates: {dated}/{len(models)} models")
 
 
+def _eval_score_of(m: dict, key: str) -> float | None:
+    rec = m.get(key) or {}
+    if not rec:
+        return None
+    try:
+        return float(rec.get("score"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _short_chart_label(name: str) -> str:
+    name = (name or "").strip()
+    name = re.sub(r"\s*·\s*", " ", name)
+    name = re.sub(r"\s+\d+k$", "", name, flags=re.I)
+    name = re.sub(r"-Instruct$", "", name, flags=re.I)
+    name = re.sub(r"-IT$", "", name, flags=re.I)
+    name = re.sub(r"-A\d+B\b", "", name, flags=re.I)
+    name = re.sub(r"\s+", " ", name).strip()
+    if len(name) <= 22:
+        return name
+    return name[:20].rstrip(" -") + "…"
+
+
+def compute_speed_quality_chart(models: list[dict]) -> dict | None:
+    """Scatter of PBM tok/s vs min-max blend of published SWE + TB.
+
+    Full-ladder recipes only (fastest pack per family). Quality is relative
+    to this board, not a universal intelligence index.
+    """
+    pool = []
+    for m in models:
+        if m.get("folded"):
+            continue
+        tok = m.get("pbm_4k")
+        swe = _eval_score_of(m, "swe_verified")
+        tb = _eval_score_of(m, "terminal_bench")
+        if tok is None or (swe is None and tb is None):
+            continue
+        pool.append({"m": m, "tok": float(tok), "swe": swe, "tb": tb})
+    if len(pool) < 3:
+        return None
+
+    swe_vals = [p["swe"] for p in pool if p["swe"] is not None]
+    tb_vals = [p["tb"] for p in pool if p["tb"] is not None]
+
+    def _span(vals: list[float]) -> tuple[float, float]:
+        lo, hi = min(vals), max(vals)
+        return lo, (hi - lo) if hi > lo else 1.0
+
+    swe_lo, swe_span = _span(swe_vals) if swe_vals else (0.0, 1.0)
+    tb_lo, tb_span = _span(tb_vals) if tb_vals else (0.0, 1.0)
+
+    for p in pool:
+        parts = []
+        if p["swe"] is not None:
+            parts.append((p["swe"] - swe_lo) / swe_span)
+        if p["tb"] is not None:
+            parts.append((p["tb"] - tb_lo) / tb_span)
+        p["quality"] = round(100.0 * (sum(parts) / len(parts)), 1)
+        p["both"] = p["swe"] is not None and p["tb"] is not None
+        m = p["m"]
+        m["agent_quality"] = p["quality"]
+        m["agent_quality_both"] = p["both"]
+
+    toks = [p["tok"] for p in pool]
+    tok_min, tok_max = min(toks), max(toks)
+    tok_span = max(tok_max - tok_min, 1.0)
+    x_lo = max(0.0, tok_min - max(tok_span * 0.06, 2.0))
+    x_hi = tok_max + max(tok_span * 0.04, 2.0)
+    y_lo, y_hi = -4.0, 104.0
+
+    w, h = 740, 400
+    left, right, top, bottom = 52, 24, 22, 44
+    plot_w, plot_h = w - left - right, h - top - bottom
+    plot_right = left + plot_w
+
+    def px(tok: float) -> float:
+        return left + ((tok - x_lo) / (x_hi - x_lo)) * plot_w
+
+    def py(q: float) -> float:
+        return top + plot_h - ((q - y_lo) / (y_hi - y_lo)) * plot_h
+
+    CHAR_W = 6.3
+    LABEL_H = 13
+    DOT_R = 8
+
+    def _label_box(p: dict) -> tuple[float, float, float, float]:
+        lw = max(len(p["label"]) * CHAR_W, 12)
+        if p["anchor"] == "start":
+            x0, x1 = p["lx"], p["lx"] + lw
+        else:
+            x0, x1 = p["lx"] - lw, p["lx"]
+        y0, y1 = p["ly"] - 9, p["ly"] + 5
+        return x0, y0, x1, y1
+
+    def _boxes_overlap(a: tuple[float, float, float, float], b: tuple[float, float, float, float], pad: float = 3) -> bool:
+        return not (a[2] + pad < b[0] or b[2] + pad < a[0] or a[3] + pad < b[1] or b[3] + pad < a[1])
+
+    def _hits_dot(box: tuple[float, float, float, float], x: float, y: float) -> bool:
+        cx = min(max(x, box[0]), box[2])
+        cy = min(max(y, box[1]), box[3])
+        return (cx - x) ** 2 + (cy - y) ** 2 < (DOT_R + 2) ** 2
+
+    def _place_side(p: dict, right: bool) -> None:
+        p["anchor"] = "start" if right else "end"
+        p["lx"] = round(p["x"] + 10 if right else p["x"] - 10, 1)
+
+    def _collides(p: dict, placed: list[dict]) -> bool:
+        box = _label_box(p)
+        if box[0] < 8 or box[2] > w - 4:
+            return True
+        if box[1] < top - 4 or box[3] > top + plot_h + 8:
+            return True
+        for q in placed:
+            if _boxes_overlap(box, _label_box(q)):
+                return True
+            if _hits_dot(box, q["x"], q["y"]):
+                return True
+        for q in points:
+            if q is p:
+                continue
+            if _hits_dot(box, q["x"], q["y"]):
+                return True
+        return False
+
+    points = []
+    for p in sorted(pool, key=lambda r: r["tok"]):
+        m = p["m"]
+        x, y = round(px(p["tok"]), 1), round(py(p["quality"]), 1)
+        tb_suite = ""
+        if p["tb"] is not None:
+            tb_suite = str((m.get("terminal_bench") or {}).get("suite") or "")
+        points.append({
+            "id": m["id"],
+            "href": f"models/{m['id'].replace('/', '_')}/",
+            "label": _short_chart_label(m.get("name") or m["id"]),
+            "full_name": m.get("name") or m["id"],
+            "tok": round(p["tok"], 1),
+            "quality": p["quality"],
+            "swe": p["swe"],
+            "tb": p["tb"],
+            "tb_suite": tb_suite,
+            "both": p["both"],
+            "fill": "#f5a14a",
+            "editors_pick": bool(m.get("editors_pick")),
+            "x": x,
+            "y": y,
+            "ly": y,
+            "lx": round(x + 10, 1),
+            "anchor": "start",
+        })
+
+    placed: list[dict] = []
+    for p in sorted(points, key=lambda r: (r["y"], r["x"])):
+        prefer_right = p["x"] < left + plot_w * 0.62
+        found = False
+        for right in (prefer_right, not prefer_right):
+            _place_side(p, right)
+            p["ly"] = p["y"]
+            if not _collides(p, placed):
+                found = True
+                break
+            step = -LABEL_H if p["y"] > top + plot_h / 2 else LABEL_H
+            for n in range(1, 10):
+                p["ly"] = round(p["y"] + step * n, 1)
+                if not _collides(p, placed):
+                    found = True
+                    break
+            if found:
+                break
+            p["ly"] = p["y"]
+        placed.append(p)
+
+    x_ticks = []
+    for val in (0, 20, 40, 60, 80, 100):
+        if x_lo <= val <= x_hi:
+            x_ticks.append({"val": val, "x": round(px(val), 1)})
+    if not x_ticks:
+        x_ticks = [{"val": round(x_lo), "x": left}, {"val": round(x_hi), "x": left + plot_w}]
+    y_ticks = [{"val": v, "y": round(py(v), 1)} for v in (0, 25, 50, 75, 100)]
+
+    return {
+        "w": w,
+        "h": h,
+        "left": left,
+        "top": top,
+        "plot_w": plot_w,
+        "plot_h": plot_h,
+        "baseline_y": top + plot_h,
+        "axis_x": left,
+        "points": points,
+        "x_ticks": x_ticks,
+        "y_ticks": y_ticks,
+        "n": len(points),
+        "swe_lo": round(min(swe_vals), 1) if swe_vals else None,
+        "swe_hi": round(max(swe_vals), 1) if swe_vals else None,
+        "tb_lo": round(min(tb_vals), 1) if tb_vals else None,
+        "tb_hi": round(max(tb_vals), 1) if tb_vals else None,
+    }
+
+
 def build():
     models = load_data()
     verify_links(models)
     stats = compute_stats(models)
     use_case_groups = group_by_use_case(models)
-    built_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    built_at = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M")
 
     # Compute bar widths relative to peak for each PBM fill (+ legacy max-ctx)
     peak = stats["peak_tok_s"] or 1
@@ -1572,7 +1870,15 @@ def build():
             val = m.get(f"pbm_{key}") or 0
             m[f"pbm_{key}_pct"] = round(val / fill_peaks[key] * 100, 1)
         m["editors_pick"] = m["id"] == EDITORS_PICK_ID
+    swe_peak = max(((m.get("swe_verified") or {}).get("score") or 0) for m in models) or 1
+    tb_peak = max(((m.get("terminal_bench") or {}).get("score") or 0) for m in models) or 1
+    for m in models:
+        swe = (m.get("swe_verified") or {}).get("score") or 0
+        tb = (m.get("terminal_bench") or {}).get("score") or 0
+        m["swe_pct"] = round(swe / swe_peak * 100, 1)
+        m["tb_pct"] = round(tb / tb_peak * 100, 1)
     stats["pbm_fill_peaks"] = {k: round(v, 1) for k, v in fill_peaks.items()}
+    speed_quality_chart = compute_speed_quality_chart(models)
 
     os.makedirs(OUT_DIR, exist_ok=True)
     shutil.copytree("public", f"{OUT_DIR}/public", dirs_exist_ok=True)
@@ -1584,6 +1890,7 @@ def build():
         "models": models,
         "stats": stats,
         "use_case_groups": use_case_groups,
+        "speed_quality_chart": speed_quality_chart,
         "built_at": built_at,
         "tool_repo": TOOL_REPO,
         "site_url": SITE_URL,

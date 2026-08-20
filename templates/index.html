@@ -26,34 +26,79 @@
       <figcaption>Portal — switch profiles, browse models, explore HuggingFace</figcaption>
     </figure>
   </div>
-  <div class="hero-stats">
-    <div class="hero-stat">
-      <div class="num">{{ stats.count }}</div>
-      <div class="label">Recipes benched</div>
+</section>
+
+<div class="divider"></div>
+
+{% if speed_quality_chart %}
+<section class="section section-block" id="speed-quality">
+  <div class="sq-split">
+    <div class="sq-chart-wrap" id="sq-chart">
+      <svg class="sq-chart" viewBox="0 0 {{ speed_quality_chart.w }} {{ speed_quality_chart.h }}"
+           width="100%" role="img"
+           aria-label="Scatter of throughput versus published agent score">
+        {% for tick in speed_quality_chart.y_ticks %}
+        <line class="pbm-grid" x1="{{ speed_quality_chart.left }}" y1="{{ tick.y }}"
+              x2="{{ speed_quality_chart.left + speed_quality_chart.plot_w }}" y2="{{ tick.y }}"/>
+        <text class="pbm-axis" x="{{ speed_quality_chart.left - 8 }}" y="{{ tick.y + 4 }}" text-anchor="end">{{ tick.val }}</text>
+        {% endfor %}
+        {% for tick in speed_quality_chart.x_ticks %}
+        <line class="pbm-grid" x1="{{ tick.x }}" y1="{{ speed_quality_chart.top }}"
+              x2="{{ tick.x }}" y2="{{ speed_quality_chart.baseline_y }}"/>
+        <text class="pbm-axis" x="{{ tick.x }}" y="{{ speed_quality_chart.baseline_y + 18 }}" text-anchor="middle">{{ tick.val }}</text>
+        {% endfor %}
+        <line class="pbm-axis-line" x1="{{ speed_quality_chart.left }}" y1="{{ speed_quality_chart.top }}"
+              x2="{{ speed_quality_chart.left }}" y2="{{ speed_quality_chart.baseline_y }}"/>
+        <line class="pbm-axis-line" x1="{{ speed_quality_chart.left }}" y1="{{ speed_quality_chart.baseline_y }}"
+              x2="{{ speed_quality_chart.left + speed_quality_chart.plot_w }}" y2="{{ speed_quality_chart.baseline_y }}"/>
+        <text class="pbm-axis pbm-y-caption" x="14"
+              y="{{ speed_quality_chart.top + speed_quality_chart.plot_h / 2 }}"
+              text-anchor="middle"
+              transform="rotate(-90 14 {{ speed_quality_chart.top + speed_quality_chart.plot_h / 2 }})">relative agent score</text>
+        <text class="pbm-axis pbm-y-caption" x="{{ speed_quality_chart.left + speed_quality_chart.plot_w / 2 }}"
+              y="{{ speed_quality_chart.h - 4 }}" text-anchor="middle">tok/s @ 4k</text>
+        {% for p in speed_quality_chart.points %}
+        <a href="{{ root }}{{ p.href }}" class="sq-point"
+           data-name="{{ p.full_name }}"
+           data-tok="{{ p.tok }}"
+           data-quality="{{ p.quality }}"
+           data-swe="{{ p.swe if p.swe is not none else '' }}"
+           data-tb="{{ p.tb if p.tb is not none else '' }}"
+           data-tb-suite="{{ p.tb_suite }}"
+           data-pick="{{ 1 if p.editors_pick else 0 }}">
+          {% if p.editors_pick %}
+          <circle class="sq-halo" cx="{{ p.x }}" cy="{{ p.y }}" r="9"/>
+          {% endif %}
+          <circle cx="{{ p.x }}" cy="{{ p.y }}" r="5.5" fill="{{ p.fill }}" stroke="#0c0c0e" stroke-width="1.25"/>
+          <text class="sq-label" x="{{ p.lx }}" y="{{ p.ly + 4 }}" text-anchor="{{ p.anchor }}">{{ p.label }}</text>
+        </a>
+        {% endfor %}
+      </svg>
+      <div class="sq-tip" id="sq-tip" hidden>
+        <div class="sq-tip-name" data-tip-name></div>
+        <div class="sq-tip-pick" data-tip-pick hidden>Editor's pick — the recipe we'd run first</div>
+        <dl class="sq-tip-dl">
+          <div><dt>Speed</dt><dd data-tip-tok></dd></div>
+          <div><dt>SWE</dt><dd data-tip-swe></dd></div>
+          <div><dt>TB</dt><dd data-tip-tb></dd></div>
+        </dl>
+      </div>
     </div>
-    <div class="hero-stat">
-      <div class="num throughput-display">{% if stats.peak_throughput %}{{ stats.peak_throughput }}{% else %}—{% endif %}</div>
-      <div class="label">Top @ 4k fill</div>
+    <div class="sq-copy">
+      <div class="section-head">
+        <h2>Speed vs published agents</h2>
+        <div class="meta">{{ speed_quality_chart.n }} recipes with a published SWE or TB score</div>
+      </div>
+      <p class="sq-lede">
+        PBM tok/s @ 4k on this GB10 vs a <em>relative</em> blend of published SWE-Verified
+        ({{ speed_quality_chart.swe_lo }}–{{ speed_quality_chart.swe_hi }}) and Terminal-Bench
+        ({{ speed_quality_chart.tb_lo }}–{{ speed_quality_chart.tb_hi }}). Hover a dot for the raw scores —
+        the axis rescales as the board changes.
+      </p>
     </div>
-    <div class="hero-stat">
-      <div class="num">{{ stats.engines|length }}</div>
-      <div class="label">Inference engines</div>
-    </div>
-    <div class="hero-stat">
-      <div class="num">1</div>
-      <div class="label">GB10 box</div>
-    </div>
-    {% if stats.editors_pick %}
-    <div class="hero-stat hero-stat-editors-pick">
-      <a class="hero-editors-pick" href="{{ root }}models/{{ stats.editors_pick.id.replace('/', '_') }}/">
-        <span class="hero-editors-pick-kicker">Editor's pick</span>
-        <span class="hero-editors-pick-name">{{ stats.editors_pick.name }}</span>
-        <span class="hero-editors-pick-meta">{{ stats.editors_pick.throughput }}</span>
-      </a>
-    </div>
-    {% endif %}
   </div>
 </section>
+{% endif %}
 
 <div class="divider"></div>
 
@@ -64,9 +109,9 @@
   </div>
 
   <div class="lb-notice" id="lb-notice">
-    <strong id="lb-notice-title">Rankings are by throughput (tok/s) on a single GB10</strong>
-    <span id="lb-notice-body"> — not by intelligence, coding quality, or SWE benchmarks.
-    We can't wait to add those. <a href="{{ tool_repo }}" target="_blank" rel="noopener">Contributions welcome ↗</a></span>
+    <strong id="lb-notice-title">Default ranking is throughput (tok/s) on a single GB10</strong>
+    <span id="lb-notice-body"> — SWE and Terminal-Bench columns are <em>published vendor figures for the base model</em>, not measured on this Spark.
+    Click a column header to sort. <a href="{{ tool_repo }}/blob/main/docs/reference/published-evals.md" target="_blank" rel="noopener">How we cite ↗</a></span>
   </div>
 
   <div class="lb-notice lb-notice-method" id="lb-method">
@@ -79,7 +124,7 @@
     <div class="lb-search">
       <input type="search" id="search" placeholder="Search models, labs, capabilities…" autocomplete="off">
     </div>
-    <div class="lb-view-toggle" role="group" aria-label="Context fill for ranking">
+    <div class="lb-view-toggle" id="lb-fill-toggle" role="group" aria-label="Context fill for ranking">
       <button type="button" class="lb-view active" data-fill="4k" aria-pressed="true">4k</button>
       <button type="button" class="lb-view" data-fill="50k" aria-pressed="false">50k</button>
       <button type="button" class="lb-view" data-fill="100k" aria-pressed="false">100k</button>
@@ -102,16 +147,17 @@
         <th class="lb-rank">#</th>
         <th class="lb-name">Model</th>
         <th class="lb-tags">For</th>
-        <th class="lb-engine">Engine</th>
         <th class="lb-params">Params</th>
         <th class="lb-curve">Curve</th>
         <th class="lb-toks sortable sort-active" data-col="tok_s">Throughput</th>
+        <th class="lb-eval sortable" data-col="swe" title="Vendor SWE-bench Verified for the base model">SWE</th>
+        <th class="lb-eval sortable" data-col="tb" title="Vendor Terminal-Bench for the base model">TB</th>
         <th class="lb-link"></th>
       </tr>
     </thead>
     <tbody>
       {% for m in models %}
-      <tr{% if m.now_testing %} class="lb-now"{% endif %}
+      <tr{% if m.editors_pick %} class="lb-now"{% endif %}
           data-folded="{{ 1 if m.folded else 0 }}"
           data-engine="{{ m.engine }}"
           data-toks-4k="{{ m.pbm_4k if m.pbm_4k is not none else '' }}"
@@ -123,26 +169,31 @@
           data-has-4k="{{ 1 if m.pbm_4k is not none else 0 }}"
           data-has-50k="{{ 1 if m.pbm_50k is not none else 0 }}"
           data-has-100k="{{ 1 if m.pbm_100k is not none else 0 }}"
-          data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.quant_label or '') + ' ' + (m.spec_tag or '') + ' ' + (m.use_cases|join(' ')) + (' now testing' if m.now_testing else ''))|lower }}">
+          data-swe="{{ m.swe_verified.score if m.swe_verified else '' }}"
+          data-tb="{{ m.terminal_bench.score if m.terminal_bench else '' }}"
+          data-tb-suite="{{ m.terminal_bench.suite if m.terminal_bench else '' }}"
+          data-swe-pct="{{ m.swe_pct }}"
+          data-tb-pct="{{ m.tb_pct }}"
+          data-has-swe="{{ 1 if m.swe_verified else 0 }}"
+          data-has-tb="{{ 1 if m.terminal_bench else 0 }}"
+          data-eval-inherited="{{ 1 if m.eval_inherited else 0 }}"
+          data-eval-base="{{ m.eval_base or '' }}"
+          data-name="{{ (m.name + ' ' + m.id + ' ' + m.lab + ' ' + (m.quant_label or '') + ' ' + (m.spec_tag or '') + ' ' + (m.use_cases|join(' ')) + (' editors pick' if m.editors_pick else ''))|lower }}">
         <td class="lb-rank"><span class="lb-rank-num">{{ "%02d"|format(loop.index) }}</span><span class="lb-rank-delta" data-rank-delta hidden aria-hidden="true"></span></td>
         <td class="lb-name">
           <a href="{{ root }}models/{{ m.id.replace('/', '_') }}/" class="lb-name-link">
-            {% if m.editors_pick %}
-            <svg class="editors-pick-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"><title>Editor's pick</title><path d="M13 2L4 14H11L10 22L20 9H12L13 2Z" fill="currentColor"/></svg>
-            {% endif %}
             {{ m.name }}
           </a>
           <div class="lb-name-meta">
             <span class="lab">{{ m.id }}</span>
             {% if m.quant_label %}<span class="tag tag-quant">{{ m.quant_label }}</span>{% endif %}
             {% if m.spec_tag %}<span class="tag tag-spec">{{ m.spec_tag }}</span>{% endif %}
-            {% if m.now_testing %}<span class="lb-now-badge" title="Currently serving and under test on Sparky"><span class="lb-now-dot" aria-hidden="true"></span>Now testing</span>{% endif %}
+            {% if m.editors_pick %}<span class="lb-now-badge" title="The recipe we'd run first on a Spark right now.">Editor's pick</span>{% endif %}
           </div>
         </td>
         <td class="lb-tags">
           {% for uc in m.use_cases %}<span class="tag tag-uc">{{ uc }}</span>{% endfor %}
         </td>
-        <td class="lb-engine"><span class="engine-{{ m.engine }}">{{ m.engine | engine_label }}</span></td>
         <td class="lb-params{% if m.is_moe %} lb-params-moe{% endif %}">{% if m.params_label %}{{ m.params_label }}{% else %}—{% endif %}</td>
         <td class="lb-curve">
           {% if m.pbm_spark_svg %}{{ m.pbm_spark_svg | safe }}
@@ -155,7 +206,22 @@
             <div class="lb-toks-value" data-toks-display>{% if m.pbm_4k is not none %}{{ m.pbm_4k }}<span class="unit">t/s</span><span class="unit ctx-at">@ 4k</span>{% else %}—{% endif %}</div>
           </div>
         </td>
+        <td class="lb-eval">
+          {% if m.swe_verified %}
+          <a class="lb-eval-num{% if m.eval_inherited %} lb-eval-inherited{% endif %}"
+             href="{{ m.swe_verified.source_url }}" target="_blank" rel="noopener"
+             title="{{ m.swe_verified.source_name }}{% if m.swe_verified.notes %} — {{ m.swe_verified.notes }}{% endif %}{% if m.eval_inherited %} — published for {{ m.eval_base }}, not this pack{% endif %}">{{ m.swe_verified.score }}<span class="unit">%</span></a>
+          {% else %}<span class="rail-empty">—</span>{% endif %}
+        </td>
+        <td class="lb-eval">
+          {% if m.terminal_bench %}
+          <a class="lb-eval-num{% if m.eval_inherited %} lb-eval-inherited{% endif %}"
+             href="{{ m.terminal_bench.source_url }}" target="_blank" rel="noopener"
+             title="{{ m.terminal_bench.source_name }}{% if m.terminal_bench.suite %} · suite {{ m.terminal_bench.suite }}{% endif %}{% if m.terminal_bench.notes %} — {{ m.terminal_bench.notes }}{% endif %}{% if m.eval_inherited %} — published for {{ m.eval_base }}, not this pack{% endif %}">{{ m.terminal_bench.score }}<span class="unit">%{% if m.terminal_bench.suite %} · {{ m.terminal_bench.suite }}{% endif %}</span></a>
+          {% else %}<span class="rail-empty">—</span>{% endif %}
+        </td>
         <td class="lb-link">
+          {% if m.aa_url %}<a class="lb-aa" href="{{ m.aa_url }}" target="_blank" rel="noopener" title="Artificial Analysis (independent board — not our numbers)">AA ↗</a>{% endif %}
           {% if m.hf_ok %}<a href="{{ m.hf_url }}" target="_blank" rel="noopener" title="HuggingFace">HF ↗</a>
           {%- else -%}<span class="hf-gated" title="Repo is gated or private — no public link">private</span>{% endif %}
         </td>
@@ -260,7 +326,7 @@ spark inference bench</pre>
   const rows = Array.from(document.querySelectorAll('#leaderboard-table tbody tr'));
   const search = document.getElementById('search');
   const filters = document.querySelectorAll('.lb-filter');
-  const viewBtns = document.querySelectorAll('.lb-view');
+  const fillBtns = document.querySelectorAll('[data-fill]');
   const lbMeta = document.getElementById('lb-meta');
   const lbMethodTitle = document.getElementById('lb-method-title');
   const dataUpdated = {{ stats.data_updated_at|tojson }};
@@ -286,10 +352,21 @@ spark inference bench</pre>
     '50k': 'Measured at 50k context fill (PBM)',
     '100k': 'Measured at 100k context fill (PBM)',
   };
+  const COL_META = {
+    tok_s: '',
+    swe: 'Sorted by published SWE-bench Verified · ' + modelCount + ' recipes',
+    tb: 'Sorted by published Terminal-Bench · ' + modelCount + ' recipes',
+  };
 
-  function activeToks(row) {
-    const raw = row.getAttribute('data-toks-' + fill);
+  function numAttr(row, name) {
+    const raw = row.getAttribute(name);
     return raw === '' || raw == null ? -1 : (parseFloat(raw) || 0);
+  }
+
+  function colScore(row, col) {
+    if (col === 'swe') return numAttr(row, 'data-swe');
+    if (col === 'tb') return numAttr(row, 'data-tb');
+    return numAttr(row, 'data-toks-' + fill);
   }
 
   function hasFill(row) {
@@ -315,28 +392,33 @@ spark inference bench</pre>
 
   function computeGlobalRanks() {
     ['4k', '50k', '100k'].forEach(f => {
-      const ranked = rows.slice().sort((a, b) => {
-        const av = a.getAttribute('data-toks-' + f);
-        const bv = b.getAttribute('data-toks-' + f);
-        const an = av === '' || av == null ? -1 : parseFloat(av) || 0;
-        const bn = bv === '' || bv == null ? -1 : parseFloat(bv) || 0;
-        return bn - an;
-      });
+      const ranked = rows.slice().sort((a, b) => numAttr(b, 'data-toks-' + f) - numAttr(a, 'data-toks-' + f));
       ranked.forEach((r, i) => { r.dataset['rank' + f] = String(i + 1); });
     });
+    const sweRanked = rows.slice().sort((a, b) => numAttr(b, 'data-swe') - numAttr(a, 'data-swe'));
+    sweRanked.forEach((r, i) => { r.dataset.rankswe = String(i + 1); });
+    const tbRanked = rows.slice().sort((a, b) => numAttr(b, 'data-tb') - numAttr(a, 'data-tb'));
+    tbRanked.forEach((r, i) => { r.dataset.ranktb = String(i + 1); });
+  }
+
+  function currentRankKey() {
+    if (sortCol === 'swe') return 'rankswe';
+    if (sortCol === 'tb') return 'ranktb';
+    return 'rank' + fill;
   }
 
   function renderRankDelta(row) {
     const deltaEl = row.querySelector('[data-rank-delta]');
     if (!deltaEl) return;
-    if (fill === '4k' || row.hidden) {
+    const curKey = currentRankKey();
+    if (curKey === 'rank4k' || row.hidden) {
       deltaEl.textContent = '';
       deltaEl.hidden = true;
       deltaEl.className = 'lb-rank-delta';
       return;
     }
     const baseRank = parseInt(row.dataset.rank4k, 10);
-    const curRank = parseInt(row.dataset['rank' + fill], 10);
+    const curRank = parseInt(row.dataset[curKey], 10);
     const delta = baseRank - curRank;
     if (!delta) {
       deltaEl.textContent = '';
@@ -420,8 +502,7 @@ spark inference bench</pre>
       r.hidden = !show;
       const numEl = r.querySelector('.lb-rank-num');
       if (matched.includes(r) && numEl) {
-        const rankKey = 'rank' + fill;
-        numEl.textContent = String(parseInt(r.dataset[rankKey], 10)).padStart(2, '0');
+        numEl.textContent = String(parseInt(r.dataset[currentRankKey()], 10)).padStart(2, '0');
       }
       renderRankDelta(r);
     });
@@ -430,27 +511,42 @@ spark inference bench</pre>
 
   function sortRows() {
     const tbody = document.querySelector('#leaderboard-table tbody');
-    const sorted = rows.slice().sort((a, b) => (activeToks(a) - activeToks(b)) * sortDir);
+    const sorted = rows.slice().sort((a, b) => {
+      const av = colScore(a, sortCol);
+      const bv = colScore(b, sortCol);
+      const aMiss = av < 0;
+      const bMiss = bv < 0;
+      if (aMiss !== bMiss) return aMiss ? 1 : -1;
+      return (av - bv) * sortDir;
+    });
     sorted.forEach(r => tbody.appendChild(r));
     apply();
   }
 
   function setFill(next) {
     fill = next;
-    viewBtns.forEach(x => {
+    fillBtns.forEach(x => {
       const on = x.dataset.fill === fill;
       x.classList.toggle('active', on);
       x.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    const suffix = dataUpdated ? ' · Data updated ' + dataUpdated : '';
-    lbMeta.textContent = (FILL_META[fill] || FILL_META['4k']) + suffix;
-    if (lbMethodTitle) lbMethodTitle.textContent = FILL_METHOD[fill] || FILL_METHOD['4k'];
+    updateMeta();
     renderAllThroughput();
     page = 1;
     sortRows();
   }
 
-  viewBtns.forEach(b => b.addEventListener('click', () => setFill(b.dataset.fill)));
+  function updateMeta() {
+    const suffix = dataUpdated ? ' · Data updated ' + dataUpdated : '';
+    if (sortCol === 'swe' || sortCol === 'tb') {
+      lbMeta.textContent = (COL_META[sortCol] || '') + suffix;
+    } else {
+      lbMeta.textContent = (FILL_META[fill] || FILL_META['4k']) + suffix;
+    }
+    if (lbMethodTitle) lbMethodTitle.textContent = FILL_METHOD[fill] || FILL_METHOD['4k'];
+  }
+
+  fillBtns.forEach(b => b.addEventListener('click', () => setFill(b.dataset.fill)));
 
   filters.forEach(b => b.addEventListener('click', () => {
     filters.forEach(x => x.classList.remove('active'));
@@ -500,12 +596,53 @@ spark inference bench</pre>
       });
       th.classList.add('sort-active');
       if (sortDir === 1) th.classList.add('asc');
+      updateMeta();
+      page = 1;
       sortRows();
     });
   });
 
   computeGlobalRanks();
   setFill('4k');
+
+  const sqWrap = document.getElementById('sq-chart');
+  const sqTip = document.getElementById('sq-tip');
+  if (sqWrap && sqTip) {
+    const tipName = sqTip.querySelector('[data-tip-name]');
+    const tipPick = sqTip.querySelector('[data-tip-pick]');
+    const tipTok = sqTip.querySelector('[data-tip-tok]');
+    const tipSwe = sqTip.querySelector('[data-tip-swe]');
+    const tipTb = sqTip.querySelector('[data-tip-tb]');
+    function fmtScore(raw, extra) {
+      if (!raw) return '—';
+      return raw + '%' + (extra ? ' · ' + extra : '');
+    }
+    function placeTip(ev) {
+      const box = sqWrap.getBoundingClientRect();
+      let left = ev.clientX - box.left + 14;
+      let top = ev.clientY - box.top + 14;
+      sqTip.hidden = false;
+      const tw = sqTip.offsetWidth;
+      const th = sqTip.offsetHeight;
+      if (left + tw > box.width - 8) left = ev.clientX - box.left - tw - 12;
+      if (top + th > box.height - 8) top = ev.clientY - box.top - th - 12;
+      sqTip.style.left = Math.max(8, left) + 'px';
+      sqTip.style.top = Math.max(8, top) + 'px';
+    }
+    sqWrap.querySelectorAll('.sq-point').forEach(pt => {
+      pt.addEventListener('mouseenter', ev => {
+        tipName.textContent = pt.dataset.name || '';
+        if (tipPick) tipPick.hidden = pt.dataset.pick !== '1';
+        tipTok.textContent = pt.dataset.tok ? pt.dataset.tok + ' t/s @ 4k' : '—';
+        tipSwe.textContent = fmtScore(pt.dataset.swe);
+        const suite = pt.dataset.tbSuite;
+        tipTb.textContent = fmtScore(pt.dataset.tb, suite);
+        placeTip(ev);
+      });
+      pt.addEventListener('mousemove', placeTip);
+      pt.addEventListener('mouseleave', () => { sqTip.hidden = true; });
+    });
+  }
 })();
 </script>
 {% endblock %}

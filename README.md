@@ -28,6 +28,7 @@ BASE=https://raw.githubusercontent.com/shawnmarck/sparkbench/main/data
 curl -fsSL $BASE/model-verification.yaml -o data/model-verification.yaml
 curl -fsSL $BASE/model-catalog.yaml      -o data/model-catalog.yaml
 curl -fsSL $BASE/golden-recipes.yaml     -o data/golden-recipes.yaml
+curl -fsSL $BASE/published-evals.yaml    -o data/published-evals.yaml
 python build.py
 
 # Output is in site/
@@ -35,13 +36,14 @@ python build.py
 
 ## Data pipeline
 
-The CI workflow fetches three YAML files from the `sparkbench` tool repo on every build:
+The CI workflow fetches YAML from the `sparkbench` tool repo on every build:
 
 | File | What it contains |
 |------|-----------------|
 | `data/model-verification.yaml` | tok/s, engine, spark_status per model |
 | `data/model-catalog.yaml` | name, params, capabilities, HF repo |
 | `data/golden-recipes.yaml` | golden map, `currently_testing`, optional `leaderboard_more`. Full ladder = 50k PBM + fastest pack per family. |
+| `data/published-evals.yaml` | Vendor SWE / Terminal-Bench figures + optional `aa_url`. Display-only; not measured on Sparky. |
 
 To update the leaderboard: merge new benchmark data into the tool repo. The site rebuilds overnight or trigger `workflow_dispatch`.
 
