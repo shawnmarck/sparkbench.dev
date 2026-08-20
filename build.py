@@ -1289,6 +1289,7 @@ def load_data():
     catalog = {m["id"]: m for m in catalog_raw}
     golden = golden_raw.get("golden", {})
     leaderboard_exclude = set(golden_raw.get("leaderboard_exclude") or [])
+    leaderboard_more = set(str(x) for x in (golden_raw.get("leaderboard_more") or []))
     currently_testing = str(golden_raw.get("currently_testing") or "").strip()
 
     # Fallback index: for verification keys that don't match a catalog id
@@ -1345,6 +1346,11 @@ def load_data():
             "why_downloaded": cat.get("why_downloaded", "").strip(),
             "release_date": cat.get("release_date"),
             "now_testing": bool(currently_testing) and inv_path == currently_testing,
+            "folded": (
+                inv_path in leaderboard_more
+                and inv_path != currently_testing
+                and inv_path != EDITORS_PICK_ID
+            ),
         }
         attach_model_params(m, cat)
         override = use_case_overrides.get(inv_path)
@@ -1395,6 +1401,7 @@ def compute_stats(models):
         "engines_in_data": engines_in_data,
         "editors_pick": editors_pick,
         "now_testing": now_testing,
+        "folded_count": sum(1 for m in models if m.get("folded")),
         "max_ctx_golden_count": len(golden_models),
         "max_ctx_bench_count": len(max_ctx_benched),
         "bench_fill_ratio": BENCH_FILL_RATIO,

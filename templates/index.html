@@ -90,6 +90,11 @@
       <button class="lb-filter" data-engine="{{ eng }}">{{ eng | engine_label }}</button>
       {% endfor %}
     </div>
+    {% if stats.folded_count %}
+    <button type="button" class="lb-more" id="lb-show-folded" aria-pressed="false">
+      {{ stats.folded_count }} more
+    </button>
+    {% endif %}
   </div>
 
   <table class="lb-table" id="leaderboard-table">
@@ -108,6 +113,7 @@
     <tbody>
       {% for m in models %}
       <tr{% if m.now_testing %} class="lb-now"{% endif %}
+          data-folded="{{ 1 if m.folded else 0 }}"
           data-engine="{{ m.engine }}"
           data-toks-4k="{{ m.pbm_4k if m.pbm_4k is not none else '' }}"
           data-toks-50k="{{ m.pbm_50k if m.pbm_50k is not none else '' }}"
@@ -261,6 +267,7 @@ spark inference bench</pre>
   const dataUpdated = {{ stats.data_updated_at|tojson }};
   const modelCount = {{ stats.count }};
   const PAGE_SIZE = 12;
+  const foldedCount = {{ stats.folded_count or 0 }};
   let engine = '';
   let q = '';
   let fill = '4k';
@@ -268,6 +275,7 @@ spark inference bench</pre>
   let sortDir = -1;
   let page = 1;
   let showAll = false;
+  let showFolded = false;
 
   const FILL_META = {
     '4k': 'Sorted by PBM @ 4k · ' + modelCount + ' recipes',
@@ -344,10 +352,13 @@ spark inference bench</pre>
 
   function matchingRows() {
     const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
+    const searching = tokens.length > 0;
     return rows.filter(r => {
       const okE = !engine || r.dataset.engine === engine;
-      const okQ = !tokens.length || tokens.every(t => r.dataset.name.includes(t));
-      return okE && okQ;
+      const okQ = !searching || tokens.every(t => r.dataset.name.includes(t));
+      const folded = r.dataset.folded === '1';
+      const okF = showFolded || searching || !folded;
+      return okE && okQ && okF;
     });
   }
 
@@ -455,6 +466,18 @@ spark inference bench</pre>
     page = 1;
     apply();
   });
+
+  const foldedBtn = document.getElementById('lb-show-folded');
+  if (foldedBtn) {
+    foldedBtn.addEventListener('click', () => {
+      showFolded = !showFolded;
+      foldedBtn.classList.toggle('active', showFolded);
+      foldedBtn.setAttribute('aria-pressed', showFolded ? 'true' : 'false');
+      foldedBtn.textContent = showFolded ? 'Hide extra' : (foldedCount + ' more');
+      page = 1;
+      apply();
+    });
+  }
 
   document.getElementById('lb-page-prev')?.addEventListener('click', () => {
     if (page > 1) { page -= 1; apply(); }

@@ -457,6 +457,23 @@ main {
   border-color: var(--text);
   color: var(--bg);
 }
+.lb-more {
+  margin-left: auto;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-mid);
+  font-size: 12.5px;
+  padding: 6px 12px;
+  transition: all 0.12s;
+}
+.lb-more:hover { border-color: var(--text-dim); color: var(--text); }
+.lb-more.active {
+  border-style: solid;
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
 
 .lb-table {
   width: 100%;
@@ -1351,6 +1368,7 @@ footer {
   .lb-name { min-width: 0; }
   .lb-pager { gap: 10px; }
   .lb-pager-all { margin-left: 0; }
+  .lb-more { margin-left: 0; }
   .uc-grid { grid-template-columns: repeat(2, 1fr); }
   .uc-card--multimodal ul { grid-template-columns: repeat(2, 1fr); }
 }
