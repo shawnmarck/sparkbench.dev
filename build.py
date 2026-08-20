@@ -38,6 +38,79 @@ def engine_label(engine: str) -> str:
     return ENGINE_LABELS.get(engine or "", engine or "—")
 
 
+# Packaging / engine / speculative suffixes stripped from the inventory slug
+# so nvidia/foo-nvfp4 and unsloth/foo-gguf count as the same family.
+_FAMILY_SUFFIXES = (
+    "nvfp4-fast",
+    "nvfp4",
+    "fp8",
+    "gguf",
+    "q4-k-m",
+    "q4_k_m",
+    "q5-k-m",
+    "q5_k_m",
+    "q6-k",
+    "iq4-xs",
+    "iq4_xs",
+    "dflash2",
+    "dflash-n10",
+    "dflash-n15",
+    "dflash",
+    "dspark-nvfp4",
+    "dspark",
+    "mtp-xs",
+    "mtp",
+    "fast",
+    "llama",
+    "eugr",
+)
+
+
+def family_key(inv_path: str) -> str:
+    """Base-model family id: slug minus lab and packaging/speculative suffixes."""
+    slug = inv_path.split("/", 1)[-1].lower().replace("_", "-")
+    slug = slug.replace("qwen3-6-", "qwen3.6-").replace("qwen36-", "qwen3.6-")
+    slug = slug.replace("qwen3-8-", "qwen3.8-")
+    while True:
+        trimmed = False
+        for sfx in _FAMILY_SUFFIXES:
+            token = "-" + sfx
+            if slug.endswith(token):
+                slug = slug[: -len(token)]
+                trimmed = True
+                break
+        if not trimmed:
+            break
+    return slug.rstrip("-")
+
+
+def fold_weaker_family_dupes(models: list[dict]) -> None:
+    """Keep the fastest recipe per family; tuck slower packs under All recipes."""
+    from collections import defaultdict
+
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for m in models:
+        groups[family_key(m["id"])].append(m)
+
+    def score(m: dict) -> tuple:
+        tok = m.get("pbm_4k")
+        if tok is None:
+            tok = m.get("tok_s") or 0
+        return (float(tok), 1 if m.get("now_testing") else 0, 1 if m["id"] == EDITORS_PICK_ID else 0)
+
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        winner = max(group, key=score)
+        for m in group:
+            if m is winner:
+                continue
+            if m.get("now_testing") or m["id"] == EDITORS_PICK_ID:
+                continue
+            m["folded"] = True
+            m["folded_reason"] = "weaker_dupe"
+
+
 CAPABILITY_LABELS = {
     "agentic": "Agents",
     "coder": "Code",
@@ -1368,9 +1441,12 @@ def load_data():
         protected = m.get("now_testing") or inv_path == EDITORS_PICK_ID
         incomplete = m.get("pbm_50k") is None
         m["folded"] = (not protected) and (incomplete or inv_path in leaderboard_more)
+        if m["folded"] and incomplete:
+            m["folded_reason"] = "incomplete_pbm"
         models.append(m)
 
     models.sort(key=lambda m: m["tok_s"] or 0, reverse=True)
+    fold_weaker_family_dupes(models)
     return models
 
 

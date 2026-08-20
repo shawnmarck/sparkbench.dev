@@ -41,7 +41,7 @@ The CI workflow fetches three YAML files from the `sparkbench` tool repo on ever
 |------|-----------------|
 | `data/model-verification.yaml` | tok/s, engine, spark_status per model |
 | `data/model-catalog.yaml` | name, params, capabilities, HF repo |
-| `data/golden-recipes.yaml` | golden map, `currently_testing`, optional `leaderboard_more`. Default board is Full ladder (has 50k PBM). |
+| `data/golden-recipes.yaml` | golden map, `currently_testing`, optional `leaderboard_more`. Full ladder = 50k PBM + fastest pack per family. |
 
 To update the leaderboard: merge new benchmark data into the tool repo. The site rebuilds overnight or trigger `workflow_dispatch`.
 

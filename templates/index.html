@@ -72,7 +72,7 @@
   <div class="lb-notice lb-notice-method" id="lb-method">
     <strong id="lb-method-title">Measured at 4k context fill (PBM)</strong>
     <span id="lb-method-body"> — decode tok/s after prefilling a fixed token context (perfbench-metrics).
-    Full ladder is 4k + 50k (and 100k when the window fits), so the curve is comparable. 4k-only benches live under All recipes.</span>
+    Full ladder is 4k + 50k (and 100k when the window fits), one recipe per model family — the fastest pack. Weaker quants and 4k-only benches live under All recipes.</span>
   </div>
 
   <div class="lb-controls">
@@ -85,8 +85,8 @@
       <button type="button" class="lb-view" data-fill="100k" aria-pressed="false">100k</button>
     </div>
     <div class="lb-view-toggle" role="group" aria-label="Which recipes to list">
-      <button type="button" class="lb-view active" data-scope="ladder" aria-pressed="true" title="Recipes measured at 4k and 50k">Full ladder</button>
-      <button type="button" class="lb-view" data-scope="all" aria-pressed="false" title="Include 4k-only and unpublished ladders">All recipes</button>
+      <button type="button" class="lb-view active" data-scope="ladder" aria-pressed="true" title="Fastest recipe per family, measured at 4k and 50k">Full ladder</button>
+      <button type="button" class="lb-view" data-scope="all" aria-pressed="false" title="Include weaker packs of the same model, plus 4k-only benches">All recipes</button>
     </div>
     <div class="lb-filters">
       <button class="lb-filter active" data-engine="">All engines</button>
