@@ -156,6 +156,15 @@
       {% endfor %}
     </tbody>
   </table>
+  <div class="lb-pager" id="lb-pager" hidden>
+    <div class="lb-pager-nav">
+      <button type="button" class="lb-pager-btn" id="lb-page-prev" aria-label="Previous page">‹</button>
+      <div class="lb-pager-pages" id="lb-pager-pages"></div>
+      <button type="button" class="lb-pager-btn" id="lb-page-next" aria-label="Next page">›</button>
+    </div>
+    <span class="lb-pager-status" id="lb-pager-status"></span>
+    <button type="button" class="lb-pager-all" id="lb-page-all">Show all</button>
+  </div>
 </section>
 
 <div class="divider"></div>
@@ -249,11 +258,14 @@ spark inference bench</pre>
   const lbMethodTitle = document.getElementById('lb-method-title');
   const dataUpdated = {{ stats.data_updated_at|tojson }};
   const modelCount = {{ stats.count }};
+  const PAGE_SIZE = 12;
   let engine = '';
   let q = '';
   let fill = '4k';
   let sortCol = 'tok_s';
   let sortDir = -1;
+  let page = 1;
+  let showAll = false;
 
   const FILL_META = {
     '4k': 'Sorted by PBM @ 4k · ' + modelCount + ' recipes',
@@ -328,22 +340,80 @@ spark inference bench</pre>
     deltaEl.className = `lb-rank-delta ${delta > 0 ? 'up' : 'down'}`;
   }
 
-  function apply() {
+  function matchingRows() {
     const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
-    let visible = 0;
-    rows.forEach(r => {
+    return rows.filter(r => {
       const okE = !engine || r.dataset.engine === engine;
       const okQ = !tokens.length || tokens.every(t => r.dataset.name.includes(t));
-      const show = okE && okQ;
+      return okE && okQ;
+    });
+  }
+
+  function renderPager(matchedCount) {
+    const pager = document.getElementById('lb-pager');
+    const pagesEl = document.getElementById('lb-pager-pages');
+    const status = document.getElementById('lb-pager-status');
+    const prev = document.getElementById('lb-page-prev');
+    const next = document.getElementById('lb-page-next');
+    const allBtn = document.getElementById('lb-page-all');
+    if (!pager || !pagesEl || !status || !prev || !next || !allBtn) return;
+
+    const pages = Math.max(1, Math.ceil(matchedCount / PAGE_SIZE));
+    const needsPager = matchedCount > PAGE_SIZE;
+    pager.hidden = !needsPager;
+    if (!needsPager) return;
+
+    if (showAll) {
+      status.textContent = 'Showing all ' + matchedCount;
+      pagesEl.replaceChildren();
+      prev.disabled = true;
+      next.disabled = true;
+      allBtn.textContent = 'Show ' + PAGE_SIZE;
+      allBtn.hidden = false;
+      return;
+    }
+
+    if (page > pages) page = pages;
+    const start = (page - 1) * PAGE_SIZE + 1;
+    const end = Math.min(page * PAGE_SIZE, matchedCount);
+    status.textContent = start + '–' + end + ' of ' + matchedCount;
+    prev.disabled = page <= 1;
+    next.disabled = page >= pages;
+    allBtn.textContent = 'Show all';
+    allBtn.hidden = false;
+
+    pagesEl.replaceChildren();
+    for (let i = 1; i <= pages; i++) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lb-pager-btn' + (i === page ? ' active' : '');
+      b.textContent = String(i);
+      b.setAttribute('aria-label', 'Page ' + i);
+      b.setAttribute('aria-current', i === page ? 'page' : 'false');
+      b.addEventListener('click', () => { page = i; apply(); });
+      pagesEl.appendChild(b);
+    }
+  }
+
+  function apply() {
+    const matched = matchingRows();
+    const pages = Math.max(1, Math.ceil(matched.length / PAGE_SIZE));
+    if (!showAll && page > pages) page = pages;
+    const start = showAll ? 0 : (page - 1) * PAGE_SIZE;
+    const end = showAll ? matched.length : start + PAGE_SIZE;
+    const onPage = new Set(matched.slice(start, end));
+
+    rows.forEach(r => {
+      const show = onPage.has(r);
       r.hidden = !show;
       const numEl = r.querySelector('.lb-rank-num');
-      if (show && numEl) {
-        visible += 1;
+      if (matched.includes(r) && numEl) {
         const rankKey = 'rank' + fill;
         numEl.textContent = String(parseInt(r.dataset[rankKey], 10)).padStart(2, '0');
       }
       renderRankDelta(r);
     });
+    renderPager(matched.length);
   }
 
   function sortRows() {
@@ -364,6 +434,7 @@ spark inference bench</pre>
     lbMeta.textContent = (FILL_META[fill] || FILL_META['4k']) + suffix;
     if (lbMethodTitle) lbMethodTitle.textContent = FILL_METHOD[fill] || FILL_METHOD['4k'];
     renderAllThroughput();
+    page = 1;
     sortRows();
   }
 
@@ -373,11 +444,25 @@ spark inference bench</pre>
     filters.forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     engine = b.dataset.engine;
+    page = 1;
     apply();
   }));
 
   search.addEventListener('input', e => {
     q = e.target.value.toLowerCase().trim();
+    page = 1;
+    apply();
+  });
+
+  document.getElementById('lb-page-prev')?.addEventListener('click', () => {
+    if (page > 1) { page -= 1; apply(); }
+  });
+  document.getElementById('lb-page-next')?.addEventListener('click', () => {
+    page += 1; apply();
+  });
+  document.getElementById('lb-page-all')?.addEventListener('click', () => {
+    showAll = !showAll;
+    page = 1;
     apply();
   });
 
