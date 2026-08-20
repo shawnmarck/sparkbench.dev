@@ -1228,6 +1228,7 @@ def attach_pbm_metrics(m: dict, v: dict, pbm: dict, *, profile: str | None = Non
     m["pbm_curve"] = curve
     m["pbm_spark_svg"] = render_pbm_sparkline(curve)
     m["pbm_chart"] = render_pbm_chart(curve)
+    m["pbm_curve_label"] = curve[0]["fill"] if len(curve) == 1 else None
 
     # Default leaderboard headline = 4k
     if tok4 is not None:

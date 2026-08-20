@@ -140,7 +140,9 @@
         <td class="lb-engine"><span class="engine-{{ m.engine }}">{{ m.engine | engine_label }}</span></td>
         <td class="lb-params{% if m.is_moe %} lb-params-moe{% endif %}">{% if m.params_label %}{{ m.params_label }}{% else %}—{% endif %}</td>
         <td class="lb-curve">
-          {% if m.pbm_spark_svg %}{{ m.pbm_spark_svg | safe }}{% else %}<span class="rail-empty">—</span>{% endif %}
+          {% if m.pbm_spark_svg %}{{ m.pbm_spark_svg | safe }}
+          {% elif m.pbm_curve_label %}<span class="rail-empty" title="Only a {{ m.pbm_curve_label }} PBM fill — 50k/100k not measured">{{ m.pbm_curve_label }}</span>
+          {% else %}<span class="rail-empty">—</span>{% endif %}
         </td>
         <td class="lb-toks">
           <div class="lb-toks-cell">
