@@ -66,6 +66,10 @@
            data-tb="{{ p.tb if p.tb is not none else '' }}"
            data-tb-suite="{{ p.tb_suite }}"
            data-pick="{{ 1 if p.editors_pick else 0 }}">
+          {% if p.leader %}
+          <line class="sq-leader" x1="{{ p.leader.x1 }}" y1="{{ p.leader.y1 }}"
+                x2="{{ p.leader.x2 }}" y2="{{ p.leader.y2 }}"/>
+          {% endif %}
           {% if p.editors_pick %}
           <circle class="sq-halo" cx="{{ p.x }}" cy="{{ p.y }}" r="9"/>
           {% endif %}

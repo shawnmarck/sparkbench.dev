@@ -1749,9 +1749,32 @@ def compute_speed_quality_chart(models: list[dict]) -> dict | None:
         cy = min(max(y, box[1]), box[3])
         return (cx - x) ** 2 + (cy - y) ** 2 < (DOT_R + 2) ** 2
 
-    def _place_side(p: dict, right: bool) -> None:
+    LABEL_GAP = 12
+
+    def _place_side(p: dict, right: bool, extra: float = 0) -> None:
         p["anchor"] = "start" if right else "end"
-        p["lx"] = round(p["x"] + 10 if right else p["x"] - 10, 1)
+        gap = LABEL_GAP + extra
+        p["lx"] = round(p["x"] + gap if right else p["x"] - gap, 1)
+
+    def _attach_leader(p: dict) -> None:
+        """Line from the dot rim to the inner edge of the label."""
+        x, y, lx, ly = p["x"], p["y"], p["lx"], p["ly"]
+        if p["anchor"] == "start":
+            tx, ty = lx - 1.5, ly
+        else:
+            tx, ty = lx + 1.5, ly
+        dx, dy = tx - x, ty - y
+        dist = (dx * dx + dy * dy) ** 0.5
+        if dist < 7:
+            p["leader"] = None
+            return
+        edge = 6.2
+        p["leader"] = {
+            "x1": round(x + dx / dist * edge, 1),
+            "y1": round(y + dy / dist * edge, 1),
+            "x2": round(tx, 1),
+            "y2": round(ty, 1),
+        }
 
     def _collides(p: dict, placed: list[dict]) -> bool:
         box = _label_box(p)
@@ -1794,8 +1817,9 @@ def compute_speed_quality_chart(models: list[dict]) -> dict | None:
             "x": x,
             "y": y,
             "ly": y,
-            "lx": round(x + 10, 1),
+            "lx": round(x + LABEL_GAP, 1),
             "anchor": "start",
+            "leader": None,
         })
 
     placed: list[dict] = []
@@ -1811,13 +1835,17 @@ def compute_speed_quality_chart(models: list[dict]) -> dict | None:
             step = -LABEL_H if p["y"] > top + plot_h / 2 else LABEL_H
             for n in range(1, 10):
                 p["ly"] = round(p["y"] + step * n, 1)
+                _place_side(p, right, extra=4 * n)
                 if not _collides(p, placed):
                     found = True
                     break
             if found:
                 break
             p["ly"] = p["y"]
+            _place_side(p, right)
         placed.append(p)
+    for p in points:
+        _attach_leader(p)
 
     x_ticks = []
     for val in (0, 20, 40, 60, 80, 100):
