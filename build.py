@@ -1454,6 +1454,7 @@ def load_data():
     golden = golden_raw.get("golden", {})
     leaderboard_exclude = set(golden_raw.get("leaderboard_exclude") or [])
     leaderboard_more = set(str(x) for x in (golden_raw.get("leaderboard_more") or []))
+    scatter_exclude = set(str(x) for x in (golden_raw.get("scatter_exclude") or []))
     currently_testing = str(golden_raw.get("currently_testing") or "").strip()
 
     # Fallback index: for verification keys that don't match a catalog id
@@ -1536,6 +1537,7 @@ def load_data():
         m["folded"] = (not protected) and (incomplete or inv_path in leaderboard_more)
         if m["folded"] and incomplete:
             m["folded_reason"] = "incomplete_pbm"
+        m["scatter_exclude"] = inv_path in scatter_exclude
         models.append(m)
 
     models.sort(key=lambda m: m["tok_s"] or 0, reverse=True)
@@ -1677,7 +1679,7 @@ def compute_speed_quality_chart(models: list[dict]) -> dict | None:
     """
     pool = []
     for m in models:
-        if m.get("folded"):
+        if m.get("folded") or m.get("scatter_exclude"):
             continue
         tok = m.get("pbm_4k")
         swe = _eval_score_of(m, "swe_verified")
