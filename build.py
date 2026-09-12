@@ -1671,6 +1671,25 @@ def _short_chart_label(name: str) -> str:
     return name[:20].rstrip(" -") + "…"
 
 
+def _pareto_front(points: list[dict]) -> list[dict]:
+    """Non-dominated set for maximize tok/s and maximize quality."""
+    front = []
+    for p in points:
+        dominated = False
+        for q in points:
+            if q is p:
+                continue
+            if q["tok"] >= p["tok"] and q["quality"] >= p["quality"] and (
+                q["tok"] > p["tok"] or q["quality"] > p["quality"]
+            ):
+                dominated = True
+                break
+        if not dominated:
+            front.append(p)
+    front.sort(key=lambda r: (r["tok"], -r["quality"]))
+    return front
+
+
 def compute_speed_quality_chart(models: list[dict]) -> dict | None:
     """Scatter of PBM tok/s vs min-max blend of published SWE + TB.
 
@@ -1849,6 +1868,16 @@ def compute_speed_quality_chart(models: list[dict]) -> dict | None:
     for p in points:
         _attach_leader(p)
 
+    front = _pareto_front(points)
+    front_ids = {p["id"] for p in front}
+    for p in points:
+        p["on_front"] = p["id"] in front_ids
+    front_xy = [(p["x"], p["y"]) for p in front]
+    if len(front_xy) >= 2:
+        pareto_path = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in front_xy)
+    else:
+        pareto_path = ""
+
     x_ticks = []
     for val in (0, 20, 40, 60, 80, 100):
         if x_lo <= val <= x_hi:
@@ -1874,6 +1903,8 @@ def compute_speed_quality_chart(models: list[dict]) -> dict | None:
         "swe_hi": round(max(swe_vals), 1) if swe_vals else None,
         "tb_lo": round(min(tb_vals), 1) if tb_vals else None,
         "tb_hi": round(max(tb_vals), 1) if tb_vals else None,
+        "pareto_path": pareto_path,
+        "pareto_n": len(front),
     }
 
 

@@ -57,8 +57,11 @@
               transform="rotate(-90 14 {{ speed_quality_chart.top + speed_quality_chart.plot_h / 2 }})">relative agent score</text>
         <text class="pbm-axis pbm-y-caption" x="{{ speed_quality_chart.left + speed_quality_chart.plot_w / 2 }}"
               y="{{ speed_quality_chart.h - 4 }}" text-anchor="middle">tok/s @ 4k</text>
+        {% if speed_quality_chart.pareto_path %}
+        <path class="sq-pareto-line" d="{{ speed_quality_chart.pareto_path }}"/>
+        {% endif %}
         {% for p in speed_quality_chart.points %}
-        <a href="{{ root }}{{ p.href }}" class="sq-point"
+        <a href="{{ root }}{{ p.href }}" class="sq-point{% if p.on_front %} is-front{% else %} is-dom{% endif %}"
            data-name="{{ p.full_name }}"
            data-tok="{{ p.tok }}"
            data-quality="{{ p.quality }}"
@@ -73,7 +76,8 @@
           {% if p.editors_pick %}
           <circle class="sq-halo" cx="{{ p.x }}" cy="{{ p.y }}" r="9"/>
           {% endif %}
-          <circle cx="{{ p.x }}" cy="{{ p.y }}" r="5.5" fill="{{ p.fill }}" stroke="#0c0c0e" stroke-width="1.25"/>
+          <circle cx="{{ p.x }}" cy="{{ p.y }}" r="{{ 6.2 if p.on_front else 4.6 }}" fill="{{ p.fill }}"
+                  stroke="#0c0c0e" stroke-width="1.25"/>
           <text class="sq-label" x="{{ p.lx }}" y="{{ p.ly + 4 }}" text-anchor="{{ p.anchor }}">{{ p.label }}</text>
         </a>
         {% endfor %}
@@ -96,8 +100,9 @@
       <p class="sq-lede">
         PBM tok/s @ 4k on this GB10 vs a <em>relative</em> blend of published SWE-Verified
         ({{ speed_quality_chart.swe_lo }}–{{ speed_quality_chart.swe_hi }}) and Terminal-Bench
-        ({{ speed_quality_chart.tb_lo }}–{{ speed_quality_chart.tb_hi }}). Hover a dot for the raw scores —
-        the axis rescales as the board changes.
+        ({{ speed_quality_chart.tb_lo }}–{{ speed_quality_chart.tb_hi }}).
+        Hover a dot for the raw scores — the axis rescales as the board changes.
+        Bright dots sit on the Pareto front: nothing else is both faster and better.
       </p>
     </div>
   </div>

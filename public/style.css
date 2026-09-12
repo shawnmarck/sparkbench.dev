@@ -1019,8 +1019,27 @@ main {
   .sq-copy .section-head .meta { margin-top: 8px; }
 }
 .sq-chart { display: block; overflow: visible; }
+.sq-pareto-line {
+  fill: none;
+  stroke: #f5a14a;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.72;
+  pointer-events: none;
+}
 .sq-point { cursor: pointer; }
-.sq-point:hover circle:not(.sq-halo) { stroke: var(--text); }
+.sq-point.is-dom circle:not(.sq-halo) { opacity: 0.48; }
+.sq-point.is-dom .sq-label,
+.sq-point.is-dom .sq-leader { opacity: 0.5; }
+.sq-point.is-front circle:not(.sq-halo) {
+  stroke: #f3f1ec;
+  stroke-width: 1.7;
+  opacity: 1;
+}
+.sq-point.is-front .sq-label { fill: var(--text); font-weight: 600; }
+.sq-point:hover circle:not(.sq-halo) { stroke: var(--text); opacity: 1; }
+.sq-point:hover .sq-label { opacity: 1; }
 .sq-halo {
   fill: none;
   stroke: var(--accent);
