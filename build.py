@@ -16,8 +16,8 @@ OUT_DIR = os.environ.get("OUT_DIR", "site")
 SITE_URL = os.environ.get("SITE_URL", "https://sparkbench.dev").rstrip("/")
 TOOL_REPO = "https://github.com/shawnmarck/sparkbench"
 HF_BASE = "https://huggingface.co"
-EDITORS_PICK_ID = "ornith-ai/ornith-1.5-35b-a3b"
-EDITORS_PICK_PROFILE = "ornith-ai-ornith-1-5-35b-a3b-nvfp4-b12x-eugr"
+EDITORS_PICK_ID = "azampatti/qwen3.8-flash-next-int4-autoround"
+EDITORS_PICK_PROFILE = "azampatti-qwen3.8-flash-next-int4-autoround-tensorfold"
 # Legacy bench-v2 fill ratio (kept for ladder metadata). Display headline is PBM 4k.
 BENCH_FILL_RATIO = 0.75
 PBM_DISPLAY_FILL = "4k"
@@ -1415,8 +1415,10 @@ def apply_editors_pick_headline(
     profile_ctx: dict[str, dict],
     pbm: dict | None = None,
 ) -> None:
-    """Editor's pick highlights the MTP companion profile when benched."""
+    """Editor's pick highlights a companion profile when that profile differs."""
     if m["id"] != EDITORS_PICK_ID:
+        return
+    if (m.get("golden_profile") or "") == EDITORS_PICK_PROFILE:
         return
     recipe = recipes_by_id.get(EDITORS_PICK_PROFILE) or {}
     name = (recipe.get("name") or "").strip()
