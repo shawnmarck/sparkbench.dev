@@ -25,12 +25,13 @@ PBM_DISPLAY_LABEL = "4k context fill"
 PBM_FILL_KEYS = ("4k", "50k", "100k")
 PBM_FILL_TOKENS = {"4k": 4096, "50k": 50000, "100k": 100000}
 
-PRODUCT_ENGINES = ["eugr", "llamacpp", "ds4"]
+PRODUCT_ENGINES = ["eugr", "llamacpp", "ds4", "tensorfold"]
 
 ENGINE_LABELS = {
     "eugr": "vLLM",
     "llamacpp": "llama.cpp",
     "ds4": "ds4",
+    "tensorfold": "TensorFold",
 }
 
 
@@ -41,6 +42,7 @@ def engine_label(engine: str) -> str:
 # Packaging / engine / speculative suffixes stripped from the inventory slug
 # so nvidia/foo-nvfp4 and unsloth/foo-gguf count as the same family.
 _FAMILY_SUFFIXES = (
+    "int4-autoround",
     "nvfp4-fast",
     "nvfp4",
     "fp8",
@@ -550,6 +552,7 @@ def infer_bench_ctx_from_recipe(recipe: dict | None) -> int | None:
 _FORMAT_LABELS = {
     "nvfp4": "NVFP4",
     "fp4": "FP4",
+    "int4": "INT4",
     "fp8": "FP8",
     "fp16": "FP16",
     "bf16": "BF16",
@@ -583,6 +586,7 @@ _PRECISION_KEYS = (
     "fp16",
     "bf16",
     "fp8",
+    "int4",
     "fp4",
     "awq",
     "gptq",
