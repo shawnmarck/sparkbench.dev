@@ -43,6 +43,7 @@ def engine_label(engine: str) -> str:
 # so nvidia/foo-nvfp4 and unsloth/foo-gguf count as the same family.
 _FAMILY_SUFFIXES = (
     "int4-autoround",
+    "fp4-local",
     "nvfp4-fast",
     "nvfp4",
     "fp8",
@@ -1378,6 +1379,10 @@ def render_pbm_chart(points: list[dict], *, w: int = 420, h: int = 200) -> dict 
 def attach_pbm_metrics(m: dict, v: dict, pbm: dict, *, profile: str | None = None) -> None:
     """Attach 4k/50k/100k PBM fills, retention, and chart geometry."""
     profile = profile or m.get("golden_profile") or v.get("tok_s_profile")
+    block = (pbm or {}).get(profile or "") or {}
+    if not isinstance(block, dict):
+        block = {}
+    m["pbm_measured_at"] = str(block.get("measured_at") or "")[:10]
     fills = {key: pbm_tok_s(pbm, profile, key) for key in PBM_FILL_KEYS}
     m["pbm_profile"] = profile
     m["pbm_4k"] = fills["4k"]
@@ -1563,10 +1568,16 @@ def compute_stats(models):
         key: sum(1 for m in models if m.get(f"pbm_{key}") is not None)
         for key in PBM_FILL_KEYS
     }
-    data_updated_at = ""
-    stamps = [str(m.get("updated_at") or "")[:10] for m in models if m.get("updated_at")]
-    if stamps:
-        data_updated_at = max(stamps)
+    pbm_dates = [m["pbm_measured_at"] for m in models if m.get("pbm_measured_at")]
+    newest_pbm = max(pbm_dates) if pbm_dates else ""
+    # Full-ladder rows whose headline PBM is from before September 2026.
+    stale_ladder_count = sum(
+        1
+        for m in models
+        if not m.get("folded")
+        and m.get("pbm_measured_at")
+        and m["pbm_measured_at"] < "2026-09-01"
+    )
     return {
         "count": len(models),
         "peak_tok_s": max(tok_values) if tok_values else 0,
@@ -1585,7 +1596,8 @@ def compute_stats(models):
         "pbm_fill_label": PBM_DISPLAY_LABEL,
         "pbm_fill_keys": list(PBM_FILL_KEYS),
         "pbm_counts": pbm_counts,
-        "data_updated_at": data_updated_at,
+        "newest_pbm": newest_pbm,
+        "stale_ladder_count": stale_ladder_count,
         "evals_swe_count": sum(1 for m in models if m.get("swe_verified")),
         "evals_tb_count": sum(1 for m in models if m.get("terminal_bench")),
     }

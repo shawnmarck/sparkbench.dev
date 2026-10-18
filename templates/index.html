@@ -114,7 +114,7 @@
 <section class="section section-block" id="leaderboard">
   <div class="section-head">
     <h2>Leaderboard</h2>
-    <div class="meta" id="lb-meta">Sorted by PBM @ 4k · {{ stats.count }} recipes{% if stats.data_updated_at %} · Data updated {{ stats.data_updated_at }}{% endif %}</div>
+    <div class="meta" id="lb-meta">Sorted by PBM @ 4k · {{ stats.count }} recipes{% if stats.newest_pbm %} · Newest PBM {{ stats.newest_pbm }}{% endif %}{% if stats.stale_ladder_count %} · {{ stats.stale_ladder_count }} full-ladder rows measured before September{% endif %}</div>
   </div>
 
   <div class="lb-notice" id="lb-notice">
@@ -338,7 +338,8 @@ spark inference bench</pre>
   const fillBtns = document.querySelectorAll('[data-fill]');
   const lbMeta = document.getElementById('lb-meta');
   const lbMethodTitle = document.getElementById('lb-method-title');
-  const dataUpdated = {{ stats.data_updated_at|tojson }};
+  const newestPbm = {{ stats.newest_pbm|tojson }};
+  const staleLadderCount = {{ stats.stale_ladder_count }};
   const modelCount = {{ stats.count }};
   const PAGE_SIZE = 12;
   const scopeBtns = document.querySelectorAll('[data-scope]');
@@ -545,8 +546,15 @@ spark inference bench</pre>
     sortRows();
   }
 
+  function freshnessSuffix() {
+    let suffix = '';
+    if (newestPbm) suffix += ' · Newest PBM ' + newestPbm;
+    if (staleLadderCount) suffix += ' · ' + staleLadderCount + ' full-ladder rows measured before September';
+    return suffix;
+  }
+
   function updateMeta() {
-    const suffix = dataUpdated ? ' · Data updated ' + dataUpdated : '';
+    const suffix = freshnessSuffix();
     if (sortCol === 'swe' || sortCol === 'tb') {
       lbMeta.textContent = (COL_META[sortCol] || '') + suffix;
     } else {
