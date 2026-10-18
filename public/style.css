@@ -160,10 +160,7 @@ main {
   z-index: 1;
   display: block;
   width: 100%;
-  max-height: 292px;
   height: auto;
-  object-fit: contain;
-  object-position: top center;
   border-radius: var(--r-lg);
   border: 1px solid var(--border);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.32);
@@ -181,7 +178,7 @@ main {
 @media (min-width: 1080px) {
   .hero-shell {
     padding-right: min(484px, 40vw);
-    min-height: 310px;
+    min-height: 440px;
   }
   .hero-demo {
     display: block;
