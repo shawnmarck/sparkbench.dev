@@ -1603,19 +1603,45 @@ def compute_stats(models):
     }
 
 
+# Recipes by task. Full-ladder ids only, in the order we'd start them.
+# Folded packs stay under All recipes and never fill these cards.
+# INT4-AR is listed twice on purpose: it is the agent pick and the vision pick.
+TASK_RECIPES = (
+    ("Agents", (
+        "azampatti/qwen3.8-flash-next-int4-autoround",
+        "nvidia/qwen3.6-35b-a3b",
+        "ornith-ai/ornith-1.5-35b-a3b",
+    )),
+    ("Code", (
+        "saricles/qwen3-coder-next",
+        "poolside/laguna-s-2.1",
+        "poolside/laguna-xs-2.1",
+    )),
+    ("Reasoning", (
+        "radixark/qwen3.8-27b",
+        "0xsero/deepseek-v4-flash-0731-spark",
+    )),
+    ("Multimodal", (
+        "azampatti/qwen3.8-flash-next-int4-autoround",
+        "google/gemma-4-26b-a4b-it",
+        "google/gemma-4-12b-it",
+    )),
+)
+
+
 def group_by_use_case(models):
-    """Group models by their primary use case."""
-    groups = {}
-    for m in models:
-        for uc in m["use_cases"]:
-            groups.setdefault(uc, []).append(m)
-    order = ["General", "Agents", "Reasoning", "Code", "Multimodal"]
+    """The full-ladder recipe to start for each job."""
+    by_id = {m["id"]: m for m in models}
     out = []
-    for uc in order:
-        if uc not in groups:
-            continue
-        items = sorted(groups[uc], key=lambda m: m["tok_s"] or 0, reverse=True)
-        out.append((uc, items[:6]))
+    for label, ids in TASK_RECIPES:
+        items = []
+        for inv in ids:
+            m = by_id.get(inv)
+            if not m or m.get("folded"):
+                continue
+            items.append(m)
+        if items:
+            out.append((label, items))
     return out
 
 

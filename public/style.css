@@ -709,15 +709,6 @@ main {
   grid-template-columns: repeat(4, 1fr);
   gap: 18px;
 }
-.uc-card--multimodal {
-  grid-column: 1 / -1;
-}
-.uc-card--multimodal ul {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0 24px;
-}
-.uc-card--multimodal li { border-top: none; }
 .uc-card {
   background: var(--bg-elev);
   border: 1px solid var(--border-soft);
@@ -745,21 +736,22 @@ main {
   font-weight: 500;
 }
 .uc-card li a:hover { color: var(--accent); }
+.uc-card li .uc-name { min-width: 0; }
 .uc-card li .toks {
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--text-dim);
   font-feature-settings: "tnum";
+  white-space: nowrap;
 }
-.uc-card li .uc-recipe {
+.uc-card li .uc-pick {
   display: block;
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--text-dim);
+  color: var(--accent);
   margin-top: 2px;
   letter-spacing: 0.03em;
 }
-.uc-card li .uc-recipe:hover { color: var(--accent); }
 
 /* ─── "Run it" / install section ─── */
 .run-demo {
@@ -1456,7 +1448,6 @@ footer {
   .lb-pager { gap: 10px; }
   .lb-pager-all { margin-left: 0; }
   .uc-grid { grid-template-columns: repeat(2, 1fr); }
-  .uc-card--multimodal ul { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 560px) {
   .nav-links a:not(.ghbtn) { display: none; }
@@ -1464,5 +1455,4 @@ footer {
   .lb-search { flex: 1; }
   .lb-link { display: none; }
   .uc-grid { grid-template-columns: 1fr; }
-  .uc-card--multimodal ul { grid-template-columns: 1fr; }
 }
